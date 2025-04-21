@@ -68,6 +68,26 @@ CONFIG_SCHEMA = cv.All(
     set_core_data,
 )
 
+BOARDS = {
+    'nucleo_f072rb': 'F0',
+    'nucleo_f103rb': 'F1',
+    'nucleo_f207zg': 'F2',
+    'nucleo_f334r8': 'F3',
+    'nucleo_f303re': 'F3',
+    'genericSTM32F303CB': 'F3',
+    'nucleo_f401re': 'F4',
+    'nucleo_f746zg': 'F7',
+    'nucleo_g071rb': 'G0',
+    'nucleo_g474re': 'G4',
+    'nucleo_h743zi': 'H7',
+    'nucleo_l053r8': 'L0',
+    'nucleo_l152re': 'L1',
+    'nucleo_l476rg': 'L4',
+    'cloud_jam': 'F4',
+    'cloud_jam_l4': 'L4',
+    'nucleo_l552ze_q': 'L5',
+}
+
 
 @coroutine_with_priority(1000)
 async def to_code(config):
@@ -77,9 +97,9 @@ async def to_code(config):
     # conditionals
     cg.add_platformio_option("board", config[CONF_BOARD])
     cg.add_build_flag("-DUSE_STM32")
+    cg.add_build_flag("-D" + BOARDS[config[CONF_BOARD]])
     cg.add_define("ESPHOME_BOARD", config[CONF_BOARD])
     cg.add_define("ESPHOME_VARIANT", "STM32")
-
     # cg.add_platformio_option("extra_scripts", ["post:post_build.py"])
 
     cg.add_platformio_option("framework", "stm32cube")
