@@ -641,7 +641,7 @@ void hsv_to_rgb(int hue, float saturation, float value, float &red, float &green
 }
 
 // System APIs
-#if defined(USE_ESP8266) || defined(USE_RP2040) || defined(USE_HOST)
+#if defined(USE_ESP8266) || defined(USE_RP2040) || defined(USE_HOST) || defined(USE_STM32)
 // ESP8266 doesn't have mutexes, but that shouldn't be an issue as it's single-core and non-preemptive OS.
 Mutex::Mutex() {}
 Mutex::~Mutex() {}
