@@ -6,12 +6,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_BOARD,
-    CONF_FRAMEWORK,
-    CONF_PLATFORM_VERSION,
-    CONF_SOURCE,
-    CONF_VERSION,
     KEY_CORE,
-    KEY_FRAMEWORK_VERSION,
     KEY_TARGET_FRAMEWORK,
     KEY_TARGET_PLATFORM,
     PLATFORM_STM32,
@@ -19,7 +14,7 @@ from esphome.const import (
 from esphome.core import CORE, EsphomeError, coroutine_with_priority
 from esphome.helpers import copy_file_if_changed, mkdir_p, read_file, write_file
 
-from .const import KEY_BOARD, KEY_PIO_FILES, KEY_STM32, stm32_ns
+from .const import KEY_BOARD, KEY_PIO_FILES, KEY_STM32
 
 # force import gpio to register pin schema
 # from .gpio import rp2040_pin_to_code  # noqa
@@ -69,23 +64,24 @@ CONFIG_SCHEMA = cv.All(
 )
 
 BOARDS = {
-    'nucleo_f072rb': 'F0',
-    'nucleo_f103rb': 'F1',
-    'nucleo_f207zg': 'F2',
-    'nucleo_f334r8': 'F3',
-    'nucleo_f303re': 'F3',
-    'genericSTM32F303CB': 'F3',
-    'nucleo_f401re': 'F4',
-    'nucleo_f746zg': 'F7',
-    'nucleo_g071rb': 'G0',
-    'nucleo_g474re': 'G4',
-    'nucleo_h743zi': 'H7',
-    'nucleo_l053r8': 'L0',
-    'nucleo_l152re': 'L1',
-    'nucleo_l476rg': 'L4',
-    'cloud_jam': 'F4',
-    'cloud_jam_l4': 'L4',
-    'nucleo_l552ze_q': 'L5',
+    "nucleo_f072rb": "F0",
+    "nucleo_f103rb": "F1",
+    "nucleo_f207zg": "F2",
+    "nucleo_f334r8": "F3",
+    "nucleo_f303re": "F3",
+    "genericSTM32F303CB": "F3",
+    "nucleo_f401re": "F4",
+    "nucleo_f746zg": "F7",
+    "nucleo_g071rb": "G0",
+    "nucleo_g474re": "G4",
+    "nucleo_h533re": "H5",
+    "nucleo_h743zi": "H7",
+    "nucleo_l053r8": "L0",
+    "nucleo_l152re": "L1",
+    "nucleo_l476rg": "L4",
+    "cloud_jam": "F4",
+    "cloud_jam_l4": "L4",
+    "nucleo_l552ze_q": "L5",
 }
 
 
@@ -104,6 +100,10 @@ async def to_code(config):
 
     cg.add_platformio_option("framework", "stm32cube")
     cg.add_platformio_option("platform", "ststm32")
+    cg.add_platformio_option("targets", "upload")
+    cg.add_platformio_option("monitor_speed", "115200")
+    cg.add_platformio_option("upload_protocol", "stlink")
+
 
 def add_pio_file(component: str, key: str, data: str):
     try:

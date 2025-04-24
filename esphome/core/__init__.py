@@ -21,6 +21,7 @@ from esphome.const import (
     PLATFORM_HOST,
     PLATFORM_RP2040,
     PLATFORM_RTL87XX,
+    PLATFORM_STM32,
 )
 
 # pylint: disable=unused-import
@@ -638,6 +639,10 @@ class EsphomeCore:
     @property
     def is_rp2040(self):
         return self.target_platform == PLATFORM_RP2040
+
+    @property
+    def is_stm32(self):
+        return self.target_platform == PLATFORM_STM32
 
     @property
     def is_bk72xx(self):
