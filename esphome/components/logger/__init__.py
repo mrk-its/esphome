@@ -34,6 +34,7 @@ from esphome.const import (
     PLATFORM_ESP8266,
     PLATFORM_RP2040,
     PLATFORM_RTL87XX,
+    PLATFORM_STM32,
 )
 from esphome.core import CORE, Lambda, coroutine_with_priority
 
@@ -101,6 +102,8 @@ ESP_ARDUINO_UNSUPPORTED_USB_UARTS = [USB_SERIAL_JTAG]
 
 UART_SELECTION_RP2040 = [USB_CDC, UART0, UART1]
 
+UART_SELECTION_STM32 = [UART0, UART1, UART2]
+
 HARDWARE_UART_TO_UART_SELECTION = {
     UART0: logger_ns.UART_SELECTION_UART0,
     UART0_SWAP: logger_ns.UART_SELECTION_UART0_SWAP,
@@ -144,6 +147,8 @@ def uart_selection(value):
         return cv.one_of(*UART_SELECTION_ESP8266, upper=True)(value)
     if CORE.is_rp2040:
         return cv.one_of(*UART_SELECTION_RP2040, upper=True)(value)
+    if CORE.is_stm32:
+        return cv.one_of(*UART_SELECTION_STM32, upper=True)(value)
     if CORE.is_libretiny:
         family = get_libretiny_family()
         if family in UART_SELECTION_LIBRETINY:
@@ -194,6 +199,7 @@ CONFIG_SCHEMA = cv.All(
                 rp2040=USB_CDC,
                 bk72xx=DEFAULT,
                 rtl87xx=DEFAULT,
+                stm32=UART2,
             ): cv.All(
                 cv.only_on(
                     [
@@ -202,6 +208,7 @@ CONFIG_SCHEMA = cv.All(
                         PLATFORM_RP2040,
                         PLATFORM_BK72XX,
                         PLATFORM_RTL87XX,
+                        PLATFORM_STM32,
                     ]
                 ),
                 uart_selection,
@@ -312,7 +319,6 @@ async def to_code(config):
         cg.add_define("USE_LOGGER_USB_CDC")
     except cv.Invalid:
         pass
-
     # Register at end for safe mode
     await cg.register_component(log, config)
 
