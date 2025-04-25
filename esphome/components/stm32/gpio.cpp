@@ -9,32 +9,47 @@ namespace stm32 {
 
 static const char *const TAG = "stm32";
 
-static GPIO_TypeDef *GPIO_PORTS[8] = {GPIOA, GPIOB, GPIOC, GPIOD, GPIOE, GPIOF, GPIOG, GPIOH};
+static GPIO_TypeDef *GPIO_PORTS[9] = {GPIOA, GPIOB, GPIOC,
+#ifdef __HAL_RCC_GPIOD_CLK_ENABLEX
+                                      GPIOD,
+#else
+                                      nullptr,
+#endif
+#ifdef __HAL_RCC_GPIOE_CLK_ENABLEX
+                                      GPIOE,
+#else
+                                      nullptr,
+#endif
+#ifdef __HAL_RCC_GPIOF_CLK_ENABLEX
+                                      GPIOF,
+#else
+                                      nullptr,
+#endif
+#ifdef __HAL_RCC_GPIOG_CLK_ENABLEX
+                                      GPIOG,
+#else
+                                      nullptr,
+#endif
+#ifdef __HAL_RCC_GPIOH_CLK_ENABLEX
+                                      GPIOH,
+#else
+                                      nullptr,
+#endif
+#ifdef __HAL_RCC_GPIOI_CLK_ENABLEX
+                                      GPIOI
+#else
+                                      nullptr
+#endif
+};
 
 static GPIO_TypeDef *pin_to_port(uint8_t pin) {
   uint8_t pin_nr = pin >> 4;
-  if (pin_nr < 4)
+  if (pin_nr < 9)
     return GPIO_PORTS[pin_nr];
   return nullptr;
 }
 
 uint16_t pin_to_mask(uint8_t pin) { return 1 << (pin & 0xf); }
-
-// static int IRAM_ATTR flags_to_mode(gpio::Flags flags, uint8_t pin) {
-//   if (flags == gpio::FLAG_INPUT) {  // NOLINT(bugprone-branch-clone)
-//     return INPUT;
-//   } else if (flags == gpio::FLAG_OUTPUT) {
-//     return OUTPUT;
-//   } else if (flags == (gpio::FLAG_INPUT | gpio::FLAG_PULLUP)) {
-//     return INPUT_PULLUP;
-//   } else if (flags == (gpio::FLAG_INPUT | gpio::FLAG_PULLDOWN)) {
-//     return INPUT_PULLDOWN;
-//     // } else if (flags == (gpio::FLAG_OUTPUT | gpio::FLAG_OPEN_DRAIN)) {
-//     //   return OpenDrain;
-//   } else {
-//     return 0;
-//   }
-// }
 
 struct ISRPinArg {
   uint8_t pin;
@@ -49,31 +64,67 @@ ISRInternalGPIOPin STM32GPIOPin::to_isr() const {
 }
 
 void STM32GPIOPin::attach_interrupt(void (*func)(void *), void *arg, gpio::InterruptType type) const {
-  // PinStatus arduino_mode = LOW;
-  // switch (type) {
-  //   case gpio::INTERRUPT_RISING_EDGE:
-  //     arduino_mode = inverted_ ? FALLING : RISING;
-  //     break;
-  //   case gpio::INTERRUPT_FALLING_EDGE:
-  //     arduino_mode = inverted_ ? RISING : FALLING;
-  //     break;
-  //   case gpio::INTERRUPT_ANY_EDGE:
-  //     arduino_mode = CHANGE;
-  //     break;
-  //   case gpio::INTERRUPT_LOW_LEVEL:
-  //     arduino_mode = inverted_ ? HIGH : LOW;
-  //     break;
-  //   case gpio::INTERRUPT_HIGH_LEVEL:
-  //     arduino_mode = inverted_ ? LOW : HIGH;
-  //     break;
-  // }
-
-  // attachInterrupt(pin_, func, arduino_mode, arg);
+  // TODO
 }
-void STM32GPIOPin::pin_mode(gpio::Flags flags) {
-  // pinMode(pin_, flags_to_mode(flags, pin_));  // NOLINT
+
+static uint16_t initialized_ports = 0;
+
+void _pin_mode(uint8_t pin, gpio::Flags flags) {
+  uint16_t port_index = pin >> 4;
+  uint16_t port_mask = 1 << port_index;
+  if (!(initialized_ports & port_mask)) {
+    switch (port_index) {
+      case 0:
+#ifdef __HAL_RCC_GPIOA_CLK_ENABLE
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+#endif
+        break;
+      case 1:
+#ifdef __HAL_RCC_GPIOB_CLK_ENABLE
+        __HAL_RCC_GPIOB_CLK_ENABLE();
+#endif
+        break;
+      case 2:
+#ifdef __HAL_RCC_GPIOC_CLK_ENABLE
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+#endif
+        break;
+      case 3:
+#ifdef __HAL_RCC_GPIOD_CLK_ENABLE
+        __HAL_RCC_GPIOD_CLK_ENABLE();
+#endif
+        break;
+      case 4:
+#ifdef __HAL_RCC_GPIOE_CLK_ENABLE
+        __HAL_RCC_GPIOE_CLK_ENABLE();
+#endif
+        break;
+      case 5:
+#ifdef __HAL_RCC_GPIOF_CLK_ENABLE
+        __HAL_RCC_GPIOF_CLK_ENABLE();
+#endif
+        break;
+      case 6:
+#ifdef __HAL_RCC_GPIOG_CLK_ENABLE
+        __HAL_RCC_GPIOG_CLK_ENABLE();
+#endif
+        break;
+      case 7:
+#ifdef __HAL_RCC_GPIOH_CLK_ENABLE
+        __HAL_RCC_GPIOH_CLK_ENABLE();
+#endif
+        break;
+      case 8:
+#ifdef __HAL_RCC_GPIOI_CLK_ENABLE
+        __HAL_RCC_GPIOI_CLK_ENABLE();
+#endif
+        break;
+    }
+    initialized_ports |= port_mask;
+  }
+  GPIO_TypeDef *port = pin_to_port(pin);
   GPIO_InitTypeDef GPIO_InitStruct;
-  GPIO_InitStruct.Pin = pin_to_mask(pin_);
+  GPIO_InitStruct.Pin = pin_to_mask(pin);
   if (flags & gpio::Flags::FLAG_INPUT) {
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   } else {
@@ -84,13 +135,26 @@ void STM32GPIOPin::pin_mode(gpio::Flags flags) {
                              : ((flags & gpio::Flags::FLAG_PULLDOWN) ? GPIO_PULLDOWN : GPIO_NOPULL);
   GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
 
-  // GPIO_TypeDef *port = pin_to_port(pin_);
-  GPIO_TypeDef *port = GPIOA;
   if (port) {
     HAL_GPIO_Init(port, &GPIO_InitStruct);
-    HAL_GPIO_WritePin(port, pin_to_mask(pin_), GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(port, pin_to_mask(pin), GPIO_PIN_RESET);
   }
 }
+
+bool _digital_read(uint8_t pin) {
+  GPIO_TypeDef *port = pin_to_port(pin);
+  return HAL_GPIO_ReadPin(port, pin_to_mask(pin));
+}
+
+void _digital_write(uint8_t pin, bool value) {
+  GPIO_TypeDef *port = pin_to_port(pin);
+  if (port) {
+    HAL_GPIO_WritePin(port, pin_to_mask(pin), value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  }
+}
+void STM32GPIOPin::pin_mode(gpio::Flags flags) { _pin_mode(pin_, flags); }
+
+void STM32GPIOPin::digital_write(bool value) { _digital_write(pin_, value); }
 
 std::string STM32GPIOPin::dump_summary() const {
   char buffer[32];
@@ -98,46 +162,33 @@ std::string STM32GPIOPin::dump_summary() const {
   return buffer;
 }
 
-bool STM32GPIOPin::digital_read() {
-  // return bool(digitalRead(pin_)) != inverted_;  // NOLINT
-  return false;
-}
-
-void STM32GPIOPin::digital_write(bool value) {
-  // GPIO_TypeDef *port = pin_to_port(pin_);
-  GPIO_TypeDef *port = GPIOA;
-
-  if (port) {
-    HAL_GPIO_WritePin(port, pin_to_mask(pin_), value ? GPIO_PIN_SET : GPIO_PIN_RESET);
-  }
-}
+bool STM32GPIOPin::digital_read() { return _digital_read(pin_); }
 
 void STM32GPIOPin::detach_interrupt() const {
-  // detachInterrupt(pin_);
+  // TODO
 }
 
 }  // namespace stm32
 
 using namespace stm32;
 
-bool IRAM_ATTR ISRInternalGPIOPin::digital_read() {
-  // auto *arg = reinterpret_cast<ISRPinArg *>(arg_);
-  // return bool(digitalRead(arg->pin)) != arg->inverted;  // NOLINT
-  return false;
-}
-void IRAM_ATTR ISRInternalGPIOPin::digital_write(bool value) {
-  // auto *arg = reinterpret_cast<ISRPinArg *>(arg_);
-  // digitalWrite(arg->pin, value != arg->inverted ? 1 : 0);  // NOLINT
-}
-void IRAM_ATTR ISRInternalGPIOPin::clear_interrupt() {
-  // TODO: implement
-  // auto *arg = reinterpret_cast<ISRPinArg *>(arg_);
-  // GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, 1UL << arg->pin);
+void IRAM_ATTR ISRInternalGPIOPin::pin_mode(gpio::Flags flags) {
+  auto pin_ = ((struct ISRPinArg *) arg_)->pin;
+  _pin_mode(pin_, flags);
 }
 
-void IRAM_ATTR ISRInternalGPIOPin::pin_mode(gpio::Flags flags) {
-  // auto *arg = reinterpret_cast<ISRPinArg *>(arg_);
-  // pinMode(arg->pin, flags_to_mode(flags, arg->pin));  // NOLINT
+bool IRAM_ATTR ISRInternalGPIOPin::digital_read() {
+  auto pin_ = ((struct ISRPinArg *) arg_)->pin;
+  return _digital_read(pin_);
+}
+
+void IRAM_ATTR ISRInternalGPIOPin::digital_write(bool value) {
+  auto pin_ = ((struct ISRPinArg *) arg_)->pin;
+  _digital_write(pin_, value);
+}
+
+void IRAM_ATTR ISRInternalGPIOPin::clear_interrupt() {
+  // TODO
 }
 
 }  // namespace esphome

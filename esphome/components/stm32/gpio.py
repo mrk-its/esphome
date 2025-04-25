@@ -101,7 +101,7 @@ STM32_PIN_SCHEMA = cv.All(
 
 @pins.PIN_SCHEMA_REGISTRY.register("stm32", STM32_PIN_SCHEMA)
 async def stm32_pin_to_code(config):
-    cg.add(cg.RawExpression("__HAL_RCC_GPIOA_CLK_ENABLE()"))
+    # cg.add(cg.RawExpression(f"__HAL_RCC_GPIOA_CLK_ENABLE()"))
     var = cg.new_Pvariable(config[CONF_ID])
     num = config[CONF_NUMBER]
     cg.add(var.set_pin(num))
