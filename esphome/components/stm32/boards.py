@@ -1,0 +1,5 @@
+STM32_BASE_PINS = {
+    "LED": 5,
+}
+
+STM32_BOARD_PINS = {}

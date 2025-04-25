@@ -15,6 +15,7 @@ from esphome.core import CORE, EsphomeError, coroutine_with_priority
 from esphome.helpers import copy_file_if_changed, mkdir_p, read_file, write_file
 
 from .const import KEY_BOARD, KEY_PIO_FILES, KEY_STM32
+from .gpio import stm32_pin_to_code  # noqa
 
 # force import gpio to register pin schema
 # from .gpio import rp2040_pin_to_code  # noqa

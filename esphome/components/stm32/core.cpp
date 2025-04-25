@@ -11,7 +11,6 @@ void uart_write_str(const char *str);
 
 int main() {
   HAL_Init();
-  HAL_Delay(500);
 #if (__CORTEX_M >= 0x03)
   // Enable the DWT Cycle Counter for micros()/delayMicroseconds()
   if (!(CoreDebug->DEMCR & CoreDebug_DEMCR_TRCENA_Msk)) {
@@ -92,6 +91,8 @@ void uart_write_str(const char *str) {
 }
 
 namespace esphome {
+
+uint32_t random_uint32() { return 42; }
 
 // --- Core Timing Implementation ---
 
