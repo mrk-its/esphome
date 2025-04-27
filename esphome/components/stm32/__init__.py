@@ -148,12 +148,12 @@ def generate_pio_files() -> bool:
 
 # Called by writer.py
 def copy_files():
-    dir = os.path.dirname(__file__)
-    post_build_file = os.path.join(dir, "post_build.py.script")
-    copy_file_if_changed(
-        post_build_file,
-        CORE.relative_build_path("post_build.py"),
-    )
+    # dir = os.path.dirname(__file__)
+    # post_build_file = os.path.join(dir, "post_build.py.script")
+    # copy_file_if_changed(
+    #     post_build_file,
+    #     CORE.relative_build_path("post_build.py"),
+    # )
     if generate_pio_files():
         path = CORE.relative_src_path("esphome.h")
         content = read_file(path).rstrip("\n")
