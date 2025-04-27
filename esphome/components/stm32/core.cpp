@@ -84,10 +84,7 @@ void init_uart() {
 void uart_write_char(char c) { HAL_UART_Transmit(&UartHandle, (uint8_t *) (&c), 1, 1000); }
 
 void uart_write_str(const char *str) {
-  char c;
-  while ((c = *str++)) {
-    uart_write_char(c);
-  };
+  HAL_UART_Transmit(&UartHandle, (uint8_t *) str, strlen(str), 1000);
 }
 
 namespace esphome {
