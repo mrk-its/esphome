@@ -1,0 +1,117 @@
+#ifdef USE_STM32
+#include "core.h"
+
+namespace esphome {
+
+namespace stm32 {
+#if (__CORTEX_M >= 0x03)
+static uint32_t prev_dwt_cycle_cnt = 0;
+static uint64_t cycle_cnt = 0;
+
+uint64_t get_dwt_cycle_cnt() {
+  uint32_t dwt_cycle_cnt = DWT->CYCCNT;
+  uint32_t delta = dwt_cycle_cnt - prev_dwt_cycle_cnt;
+  cycle_cnt += delta;
+  prev_dwt_cycle_cnt = dwt_cycle_cnt;
+  return cycle_cnt;
+}
+#endif
+}  // namespace stm32
+
+uint32_t random_uint32() { return 42; }
+
+uint32_t IRAM_ATTR HOT millis() { return HAL_GetTick(); }
+
+void IRAM_ATTR HOT delay(uint32_t ms) { HAL_Delay(ms); }
+
+uint32_t IRAM_ATTR HOT micros() {
+#if (__CORTEX_M >= 0x03)
+  uint32_t hclk_freq = HAL_RCC_GetHCLKFreq();
+  if (hclk_freq == 0)
+    return 0;  // Clock not configured?
+  return (uint32_t) ((stm32::get_dwt_cycle_cnt() * 1000000ULL) / hclk_freq);
+
+#else
+  // Fallback for Cortex-M0/M0+: Use SysTick (lower resolution)
+  // Get current SysTick counter value and snapshot of millis()
+  uint32_t ms = HAL_GetTick();
+  uint32_t tick_val = SysTick->VAL;
+  uint32_t tick_load = SysTick->LOAD;
+  uint32_t ms_check = HAL_GetTick();
+  // Check if SysTick rolled over while reading values
+  // Or if the COUNTFLAG is set (indicating a rollover occurred since last check)
+  if (ms != ms_check || (SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk)) {
+    ms = HAL_GetTick();       // Read updated millis() again
+    tick_val = SysTick->VAL;  // Re-read VAL after potential rollover
+  }
+
+  // Calculate microseconds: ms part + fraction of the current ms based on SysTick counter
+  // SysTick counts down from LOAD to 0. Fraction is (LOAD - VAL) / (LOAD + 1)
+  return (ms * 1000) + ((tick_load - tick_val) * 1000) / (tick_load + 1);
+#endif
+}
+
+void IRAM_ATTR HOT delayMicroseconds(uint32_t us) {
+  if (us == 0)
+    return;
+#if (__CORTEX_M >= 0x03)
+  // Ensure DWT cycle counter is enabled
+  uint32_t hclk_freq = HAL_RCC_GetHCLKFreq();
+  if (hclk_freq == 0)
+    return;  // Clock not configured?
+
+  uint64_t target_cycle_cnt = stm32::get_dwt_cycle_cnt() + (uint64_t) us * hclk_freq / 1000000ULL;
+
+  while (target_cycle_cnt > stm32::get_dwt_cycle_cnt()) {
+    __NOP();  // Ensure loop doesn't get optimized away
+  }
+#else
+  // Fallback for Cortex-M0/M0+: Calibrated busy-wait loop (less accurate)
+  uint32_t hclk_mhz = HAL_RCC_GetHCLKFreq() / 1000000;
+  // Rough calibration: Number of loop iterations per microsecond.
+  // This needs careful tuning for your specific M0/M0+ chip and optimization level!
+  // Example factor (adjust!): Divide by 4 seems common, but testing is needed.
+  uint32_t loop_iterations = us * (hclk_mhz / 4);
+  while (loop_iterations--) {
+    __NOP();
+  }
+#endif
+}
+
+void IRAM_ATTR HOT yield() {}
+
+void arch_restart() {
+  HAL_NVIC_SystemReset();
+  // This function should not return. Loop forever if it does.
+  while (1) {
+  }
+}
+
+void arch_init() {}
+
+void IRAM_ATTR HOT arch_feed_wdt() {
+#ifdef HAL_IWDG_MODULE_ENABLED_
+  // Requires the watchdog to be initialized (either by CubeMX or manually in arch_init/main)
+  // and the handle `hiwdg` to be globally accessible (use 'extern' declaration above).
+  HAL_IWDG_Refresh(&hiwdg);
+#endif
+}
+
+uint8_t progmem_read_byte(const uint8_t *addr) {
+  // Add checks for valid Flash address range if necessary
+  return *addr;
+}
+
+uint32_t IRAM_ATTR HOT arch_get_cpu_cycle_count() {
+#if (__CORTEX_M >= 0x03)
+  return DWT->CYCCNT;
+#else
+  return 0;  // Not available or easily accessible on M0/M0+ without custom timer
+#endif
+}
+
+uint32_t arch_get_cpu_freq_hz() { return HAL_RCC_GetHCLKFreq(); }
+
+}  // namespace esphome
+
+#endif  // USE_STM32

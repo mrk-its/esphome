@@ -36,13 +36,8 @@
 #error "Unsupported STM32 Family"
 #endif
 
-#ifndef TEST_ESP_STM32
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
-#else
-#define HOT
-#define IRAM_ATTR
-#endif
 
 #define USARTx USART2
 #define USARTx_CLK_ENABLE() __HAL_RCC_USART2_CLK_ENABLE()
