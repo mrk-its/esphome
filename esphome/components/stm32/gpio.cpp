@@ -1,4 +1,3 @@
-#define USE_STM32
 #ifdef USE_STM32
 
 #include "gpio.h"

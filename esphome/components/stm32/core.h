@@ -74,4 +74,9 @@ void IRAM_ATTR HOT arch_feed_wdt();
 uint8_t progmem_read_byte(const uint8_t *addr);
 };  // namespace esphome
 
+extern "C" {
+void SysTick_Handler(void);
+void Error_Handler(void);
+}
+
 #endif
