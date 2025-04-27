@@ -87,6 +87,19 @@ void uart_write_str(const char *str) {
   HAL_UART_Transmit(&UartHandle, (uint8_t *) str, strlen(str), 1000);
 }
 
+#if (__CORTEX_M >= 0x03)
+static uint32_t prev_dwt_cycle_cnt = 0;
+static uint64_t cycle_cnt = 0;
+
+uint64_t get_dwt_cycle_cnt() {
+  uint32_t dwt_cycle_cnt = DWT->CYCCNT;
+  uint32_t delta = dwt_cycle_cnt - prev_dwt_cycle_cnt;
+  cycle_cnt += delta;
+  prev_dwt_cycle_cnt = dwt_cycle_cnt;
+  return cycle_cnt;
+}
+#endif
+
 namespace esphome {
 
 uint32_t random_uint32() { return 42; }
@@ -112,12 +125,11 @@ void IRAM_ATTR HOT delay(uint32_t ms) {
 
 uint32_t IRAM_ATTR HOT micros() {
 #if (__CORTEX_M >= 0x03)
-  // Ensure DWT cycle counter is enabled (call enable_dwt_cycle_counter() during init)
   uint32_t hclk_freq = HAL_RCC_GetHCLKFreq();
   if (hclk_freq == 0)
     return 0;  // Clock not configured?
-  // Calculate microseconds from CPU cycles. Use 64-bit intermediate for accuracy.
-  return (uint32_t) (((uint64_t) DWT->CYCCNT * 1000000ULL) / hclk_freq);
+  return (uint32_t) ((get_dwt_cycle_cnt() * 1000000ULL) / hclk_freq);
+
 #else
   // Fallback for Cortex-M0/M0+: Use SysTick (lower resolution)
   // Get current SysTick counter value and snapshot of millis()
@@ -125,7 +137,6 @@ uint32_t IRAM_ATTR HOT micros() {
   uint32_t tick_val = SysTick->VAL;
   uint32_t tick_load = SysTick->LOAD;
   uint32_t ms_check = HAL_GetTick();
-
   // Check if SysTick rolled over while reading values
   // Or if the COUNTFLAG is set (indicating a rollover occurred since last check)
   if (ms != ms_check || (SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk)) {
@@ -154,18 +165,9 @@ void IRAM_ATTR HOT delayMicroseconds(uint32_t us) {
   if (hclk_freq == 0)
     return;  // Clock not configured?
 
-  uint32_t start_cycle = DWT->CYCCNT;
-  // Calculate target cycles for the delay. Use 64-bit intermediate.
-  uint64_t target_cycles_64 = (uint64_t) us * hclk_freq / 1000000ULL;
-  // Prevent excessive delays or overflow issues with the 32-bit counter delta
-  uint32_t delay_cycles = (target_cycles_64 > 0xFFFFFFFFULL) ? 0xFFFFFFFF : (uint32_t) target_cycles_64;
-  // Minimum delay of a few cycles to account for overhead
-  if (delay_cycles < 20)
-    delay_cycles = 20;
+  uint64_t target_cycle_cnt = get_dwt_cycle_cnt() + (uint64_t) us * hclk_freq / 1000000ULL;
 
-  uint32_t target_cycle = start_cycle + delay_cycles;
-  // Busy wait loop - handles counter wrap-around correctly
-  while (((int32_t) (target_cycle - DWT->CYCCNT)) > 0) {
+  while (target_cycle_cnt > get_dwt_cycle_cnt()) {
     __NOP();  // Ensure loop doesn't get optimized away
   }
 #else
