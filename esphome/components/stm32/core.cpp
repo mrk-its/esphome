@@ -180,7 +180,7 @@ void SystemClock_Config(void) {
 
 int main() {
   HAL_Init();
-  SystemClock_Config();
+  // SystemClock_Config();
 #if (__CORTEX_M >= 0x03)
   // Enable the DWT Cycle Counter for micros()/delayMicroseconds()
   if (!(CoreDebug->DEMCR & CoreDebug_DEMCR_TRCENA_Msk)) {
