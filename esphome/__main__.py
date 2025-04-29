@@ -38,6 +38,7 @@ from esphome.const import (
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
     PLATFORM_RP2040,
+    PLATFORM_STM32,
     PLATFORM_RTL87XX,
     SECRETS_FILES,
 )
@@ -350,7 +351,7 @@ def upload_program(config, args, host):
             file = getattr(args, "file", None)
             return upload_using_esptool(config, host, file, args.upload_speed)
 
-        if CORE.target_platform in (PLATFORM_RP2040):
+        if CORE.target_platform in (PLATFORM_RP2040, PLATFORM_STM32):
             return upload_using_platformio(config, args.device)
 
         if CORE.target_platform in (PLATFORM_BK72XX, PLATFORM_RTL87XX):

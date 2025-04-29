@@ -101,7 +101,6 @@ async def to_code(config):
 
     cg.add_platformio_option("framework", "stm32cube")
     cg.add_platformio_option("platform", "ststm32")
-    cg.add_platformio_option("targets", "upload")
     cg.add_platformio_option("monitor_speed", "115200")
     cg.add_platformio_option("upload_protocol", "stlink")
 
