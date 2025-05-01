@@ -67,6 +67,12 @@ void arch_restart();
 void arch_init();
 void IRAM_ATTR HOT arch_feed_wdt();
 uint8_t progmem_read_byte(const uint8_t *addr);
+
+namespace stm32 {
+uint8_t get_active_flash_bank();
+void swap_flash_banks();
+}  // namespace stm32
+
 };  // namespace esphome
 
 extern "C" {

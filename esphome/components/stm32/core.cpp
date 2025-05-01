@@ -210,6 +210,8 @@ int main() {
 
   log_clock_config();
 
+  ESP_LOGI(TAG, "Active flash bank: %d", ::esphome::stm32::get_active_flash_bank());
+
   while (1) {
     loop();
   }

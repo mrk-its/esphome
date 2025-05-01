@@ -16,6 +16,31 @@ uint64_t get_dwt_cycle_cnt() {
   return cycle_cnt;
 }
 #endif
+uint8_t get_active_flash_bank() {
+  volatile uint32_t remap = READ_BIT(SYSCFG->MEMRMP, 0x1 << 8);
+  return remap == 0 ? FLASH_BANK_1 : FLASH_BANK_1;
+}
+
+void swap_flash_banks() {
+  FLASH_OBProgramInitTypeDef ob_config = {0};
+  HAL_FLASHEx_OBGetConfig(&ob_config);
+
+  if (get_active_flash_bank() == FLASH_BANK_1) {
+    ob_config.USERConfig |= OB_BFB2_ENABLE;
+  } else {
+    ob_config.USERConfig &= ~OB_BFB2_ENABLE;
+  }
+
+  ob_config.OptionType = OPTIONBYTE_USER;
+  ob_config.USERType = OB_USER_BFB2;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASH_OB_Unlock();
+  HAL_FLASHEx_OBProgram(&ob_config);
+  HAL_FLASH_OB_Launch();
+  HAL_FLASH_OB_Lock();
+}
+
 }  // namespace stm32
 
 uint32_t random_uint32() { return 42; }
