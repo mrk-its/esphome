@@ -13,22 +13,6 @@ void STM32Can::setup() {
     this->mark_failed();
   }
 }
-// void STM32Can::loop() {
-//   auto fifo0_cnt = HAL_CAN_GetRxFifoFillLevel(&hcan, 0);
-//   auto fifo1_cnt = HAL_CAN_GetRxFifoFillLevel(&hcan, 1);
-//   if(fifo1_cnt) {
-//     ESP_LOGE(TAG, "not expected message in fifo #1");
-//   }
-
-//   CAN_RxHeaderTypeDef header;
-//   uint8_t data[8];
-
-//   if(fifo0_cnt) {
-//     if(HAL_CAN_GetRxMessage(&hcan, 0, &header, data) == HAL_OK) {
-//       ESP_LOGI(TAG, "fifo #0, received msg from %d, dlc: %d", header.StdId, header.DLC);
-//     }
-//   }
-// }
 
 const uint32_t CAN_BITRATES[] = {
     1000,  5000,  10000, 12500,  16000,  20000,  25000,  31250,  33000,  40000,   50000,
