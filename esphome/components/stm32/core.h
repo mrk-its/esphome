@@ -71,6 +71,10 @@ uint8_t progmem_read_byte(const uint8_t *addr);
 namespace stm32 {
 uint8_t get_active_flash_bank();
 void swap_flash_banks();
+void init_uart();
+void uart_write_char(char c);
+void uart_write_str(const char *str);
+
 }  // namespace stm32
 
 };  // namespace esphome
