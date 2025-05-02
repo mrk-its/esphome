@@ -14,7 +14,9 @@ from esphome.const import (
 from esphome.core import CORE, EsphomeError, coroutine_with_priority
 from esphome.helpers import copy_file_if_changed, mkdir_p, read_file, write_file
 
-from .const import KEY_BOARD, KEY_PIO_FILES, KEY_STM32
+from .boards import detect_board_family
+from .clock import board_clock_config, generate_clock_config, optional_dict
+from .const import CONF_BOARD_FAMILY, CONF_CLOCK, KEY_BOARD, KEY_PIO_FILES, KEY_STM32
 from .gpio import stm32_pin_to_code  # noqa
 
 # force import gpio to register pin schema
@@ -58,43 +60,31 @@ def get_download_types(storage_json):
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
-            cv.Required(CONF_BOARD): cv.string_strict,
+            cv.Required(CONF_BOARD): cv.All(
+                cv.string_strict,
+            ),
+            cv.Optional(CONF_BOARD_FAMILY): cv.string_strict,
+            cv.Optional(CONF_CLOCK): optional_dict(dict),
         }
     ),
+    detect_board_family,
+    board_clock_config,
     set_core_data,
 )
-
-BOARDS = {
-    "nucleo_f072rb": "F0",
-    "nucleo_f103rb": "F1",
-    "nucleo_f207zg": "F2",
-    "nucleo_f334r8": "F3",
-    "nucleo_f303re": "F3",
-    "genericSTM32F303CB": "F3",
-    "nucleo_f401re": "F4",
-    "nucleo_f746zg": "F7",
-    "nucleo_g071rb": "G0",
-    "nucleo_g474re": "G4",
-    "nucleo_h533re": "H5",
-    "nucleo_h743zi": "H7",
-    "nucleo_l053r8": "L0",
-    "nucleo_l152re": "L1",
-    "nucleo_l476rg": "L4",
-    "cloud_jam": "F4",
-    "cloud_jam_l4": "L4",
-    "nucleo_l552ze_q": "L5",
-}
 
 
 @coroutine_with_priority(1000)
 async def to_code(config):
+    import json
+
+    print(json.dumps(config, indent=2))
     # cg.add(stm32_ns.setup_preferences())
 
     # Allow LDF to properly discover dependency including those in preprocessor
     # conditionals
     cg.add_platformio_option("board", config[CONF_BOARD])
     cg.add_build_flag("-DUSE_STM32")
-    cg.add_build_flag("-D" + BOARDS[config[CONF_BOARD]])
+    cg.add_build_flag("-D" + config[CONF_BOARD_FAMILY])
     cg.add_define("ESPHOME_BOARD", config[CONF_BOARD])
     cg.add_define("ESPHOME_VARIANT", "STM32")
     # cg.add_platformio_option("extra_scripts", ["post:post_build.py"])
@@ -103,6 +93,10 @@ async def to_code(config):
     cg.add_platformio_option("platform", "ststm32")
     cg.add_platformio_option("monitor_speed", "115200")
     cg.add_platformio_option("upload_protocol", "stlink")
+
+    generate_clock_config(config)
+
+    # print(config["clock"]["foo"])
 
 
 def add_pio_file(component: str, key: str, data: str):
