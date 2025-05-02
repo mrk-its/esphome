@@ -16,12 +16,18 @@ uint64_t get_dwt_cycle_cnt() {
   return cycle_cnt;
 }
 #endif
+
 uint8_t get_active_flash_bank() {
+#if defined(FLASH_BANK_1)
   volatile uint32_t remap = READ_BIT(SYSCFG->MEMRMP, 0x1 << 8);
   return remap == 0 ? FLASH_BANK_1 : FLASH_BANK_1;
+#else
+  return 0;
+#endif
 }
 
 void swap_flash_banks() {
+#if defined(FLASH_BANK_1) && defined(OB_BFB2_ENABLE)
   FLASH_OBProgramInitTypeDef ob_config = {0};
   HAL_FLASHEx_OBGetConfig(&ob_config);
 
@@ -39,6 +45,7 @@ void swap_flash_banks() {
   HAL_FLASHEx_OBProgram(&ob_config);
   HAL_FLASH_OB_Launch();
   HAL_FLASH_OB_Lock();
+#endif
 }
 static UART_HandleTypeDef UartHandle;
 

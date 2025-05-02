@@ -8,7 +8,7 @@ const char *TAG = "main";
 
 extern void setup();
 extern void loop();
-
+#if defined(L4) || defined(G4)
 // Helper functions to get prescaler values
 uint32_t get_ahb_prescaler(uint32_t divider) {
   switch (divider) {
@@ -51,6 +51,7 @@ uint32_t get_apb_prescaler(uint32_t divider) {
       return 1;
   }
 }
+
 void log_clock_config() {
   RCC_ClkInitTypeDef clkinitstruct = {0};
   RCC_OscInitTypeDef oscinitstruct = {0};
@@ -134,6 +135,9 @@ void log_clock_config() {
   ESP_LOGI(TAG, "APB1 Prescaler: %lu", apb1_div);
   ESP_LOGI(TAG, "APB2 Prescaler: %lu", apb2_div);
 }
+#else
+void log_clock_config() {}
+#endif
 
 int main() {
   HAL_Init();
