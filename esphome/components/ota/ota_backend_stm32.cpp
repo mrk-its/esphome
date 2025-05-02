@@ -82,6 +82,7 @@ void STM32OTABackend::abort() {}
 
 }  // namespace ota
 }  // namespace esphome
-
+#else
+#error Dual-Bank Flash is not present on this board
 #endif  // FLASH_BANK_2
 #endif  // USE_STM32
