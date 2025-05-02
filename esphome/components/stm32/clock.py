@@ -15,26 +15,29 @@ HSI_STATE = cv.one_of(
     "RCC_HSI_ON",
 )
 HSI_CALIBRATION_VALUE = cv.int_range(0, 31)
+HSI_DIV = cv.one_of(*(f"RCC_HSI_DIV{1 << i}" for i in range(8)))
 
 HSE_STATE = cv.one_of(
     "RCC_HSE_OFF",
     "RCC_HSE_ON",
+    "RCC_HSE_BYPASS",
 )
 
 LSI_STATE = cv.one_of(
-    "RCC_HSE_OFF",
-    "RCC_HSE_ON",
+    "RCC_LSI_OFF",
+    "RCC_LSI_ON",
 )
 
 LSE_STATE = cv.one_of(
-    "RCC_HSE_OFF",
-    "RCC_HSE_ON",
+    "RCC_LSE_OFF",
+    "RCC_LSE_ON",
+    "RCC_LSE_BYPASS",
 )
 
 
 MSI_STATE = cv.one_of(
-    "RCC_HSE_OFF",
-    "RCC_HSE_ON",
+    "RCC_MSI_OFF",
+    "RCC_MSI_ON",
 )
 MSI_CALIBRATION_VALUE = cv.int_range(0x00, 0xFF)
 MSI_CLOCK_RANGE = cv.one_of(*(f"RCC_MSIRANGE_{i}" for i in range(12)))
@@ -69,6 +72,16 @@ OSCILLATOR_HSI = cv.Schema(
     }
 )
 
+OSCILLATOR_HSI_G0 = cv.Schema(
+    {
+        cv.Optional("state", default="RCC_HSI_ON"): HSI_STATE,
+        cv.Optional("calibration_value", default="RCC_HSICALIBRATION_DEFAULT"): cv.Any(
+            HSI_CALIBRATION_VALUE, cv.one_of("RCC_HSICALIBRATION_DEFAULT")
+        ),
+        cv.Optional("div", default="RCC_HSI_DIV1"): HSI_DIV,
+    }
+)
+
 OSCILLATOR_HSE = cv.Schema(
     {
         cv.Optional("state", default="RCC_HSE_ON"): HSE_STATE,
@@ -99,7 +112,7 @@ OSCILLATOR_MSI = cv.Schema(
 
 OSCILLATOR_HSI48 = cv.Schema(
     {
-        cv.Required("state"): HSI48_STATE,
+        cv.Optional("state", default="RCC_HSI48_ON"): HSI48_STATE,
     }
 )
 
@@ -167,9 +180,49 @@ L4_CLOCK_CONFIG = cv.Schema(
     }
 )
 
+G0_CLOCK_CONFIG = cv.Schema(
+    {
+        cv.Required("control_voltage_scaling"): cv.one_of(
+            "PWR_REGULATOR_VOLTAGE_SCALE1_BOOST",
+            "PWR_REGULATOR_VOLTAGE_SCALE1",
+            "PWR_REGULATOR_VOLTAGE_SCALE2",
+        ),
+        # cv.Optional("foo"): cv.Schema({
+        #     cv.Optional("bar", default=True): cv.boolean
+        # }),
+        cv.Required("oscillator"): cv.Schema(
+            {
+                cv.Optional("hsi"): optional_dict(OSCILLATOR_HSI_G0),
+                cv.Optional("hse"): optional_dict(OSCILLATOR_HSE),
+                cv.Optional("lsi"): optional_dict(OSCILLATOR_LSI),
+                cv.Optional("lse"): optional_dict(OSCILLATOR_LSE),
+                cv.Optional("msi"): optional_dict(OSCILLATOR_MSI),
+                cv.Optional("hsi48"): optional_dict(OSCILLATOR_HSI48),
+                cv.Required("pll"): PLL,
+            }
+        ),
+        cv.Required("clock"): cv.Schema(
+            {
+                cv.Required("flash_latency"): FLASH_LATENCY,
+                cv.Optional("sysclk", default=True): cv.boolean,
+                cv.Optional("hclk", default=True): cv.boolean,
+                cv.Optional("pclk1", default=True): cv.boolean,
+                cv.Required("sys_clk_source"): SYSCLKSOURCE,
+                cv.Optional(
+                    "ahb_clk_divider", default="RCC_SYSCLK_DIV1"
+                ): AHB_CLK_DIVIDER,
+                cv.Optional(
+                    "apb1_clk_divider", default="RCC_HCLK_DIV1"
+                ): RCC_HCLK_DIVIDER,
+            }
+        ),
+    }
+)
+
 FAMILY_CLOCK_CONFIGS = {
     "L4": L4_CLOCK_CONFIG,
     "G4": L4_CLOCK_CONFIG,
+    "G0": G0_CLOCK_CONFIG,
 }
 
 CLOCK_DEFAULTS = {
@@ -190,6 +243,26 @@ CLOCK_DEFAULTS = {
         "clock": {
             "sys_clk_source": "RCC_SYSCLKSOURCE_PLLCLK",
             "flash_latency": "FLASH_LATENCY_4",
+        },
+    },
+    "G0": {
+        "control_voltage_scaling": "PWR_REGULATOR_VOLTAGE_SCALE1",
+        "oscillator": {
+            "hsi": {},
+            "lse": {},
+            "pll": {
+                "state": "RCC_PLL_ON",
+                "source": "RCC_PLLSOURCE_HSI",
+                "pllm": 1,
+                "plln": 8,
+                "pllp": "RCC_PLLP_DIV2",
+                "pllq": "RCC_PLLQ_DIV2",
+                "pllr": "RCC_PLLR_DIV2",
+            },
+        },
+        "clock": {
+            "sys_clk_source": "RCC_SYSCLKSOURCE_PLLCLK",
+            "flash_latency": "FLASH_LATENCY_2",
         },
     },
     "G4": {
@@ -214,7 +287,7 @@ CLOCK_DEFAULTS = {
 }
 
 
-def generate_l4_clock_config(config):
+def _generate_clock_config(config):
     cg.add(
         cg.RawStatement(
             dedent("""
@@ -245,6 +318,14 @@ def generate_l4_clock_config(config):
                 """)
             )
         )
+        if "div" in hsi:
+            cg.add(
+                cg.RawStatement(
+                    dedent(f"""
+                        RCC_OscInitStruct.HSIDiv = {hsi["div"]};
+                    """)
+                )
+            )
 
     if hse := oscillator.get("hse"):
         oscillator_types.append("RCC_OSCILLATORTYPE_HSE")
@@ -304,7 +385,7 @@ def generate_l4_clock_config(config):
 
     clock_types = []
     for clk_name in ("sysclk", "hclk", "pclk1", "pclk2"):
-        if clock[clk_name]:
+        if clk_name in clock:
             clock_types.append(f"RCC_CLOCKTYPE_{clk_name.upper()}")
 
     if clock_types:
@@ -319,10 +400,17 @@ def generate_l4_clock_config(config):
                 RCC_ClkInitStruct.SYSCLKSource = {clock["sys_clk_source"]};
                 RCC_ClkInitStruct.AHBCLKDivider = {clock["ahb_clk_divider"]};
                 RCC_ClkInitStruct.APB1CLKDivider = {clock["apb1_clk_divider"]};
-                RCC_ClkInitStruct.APB2CLKDivider = {clock["apb2_clk_divider"]};
             """)
         )
     )
+    if "apb2_clk_divider" in clock:
+        cg.add(
+            cg.RawStatement(
+                dedent(f"""
+                    RCC_ClkInitStruct.APB2CLKDivider = {clock["apb2_clk_divider"]};
+                """)
+            )
+        )
     cg.add(
         cg.RawStatement(
             dedent(f"""
@@ -335,8 +423,9 @@ def generate_l4_clock_config(config):
 
 
 CONFIG_GENERATORS = {
-    "L4": generate_l4_clock_config,
-    "G4": generate_l4_clock_config,
+    "L4": _generate_clock_config,
+    "G4": _generate_clock_config,
+    "G0": _generate_clock_config,
 }
 
 
@@ -350,7 +439,7 @@ def board_clock_config(value):
         raise cv.Invalid(f"Can't find clock config for '{board_family}' board family")
 
     board_defaults = CLOCK_DEFAULTS.get(board) or CLOCK_DEFAULTS.get(board_family)
-    if not board_defaults:
+    if board_defaults is None:
         raise cv.Invalid(
             f"can't find defaults for '{board}' / '{board_family}' board family"
         )
