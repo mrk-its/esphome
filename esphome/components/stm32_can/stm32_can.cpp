@@ -36,13 +36,13 @@ bool STM32Can::setup_internal() {
   hcan.Init.TransmitFifoPriority = DISABLE;
 
   uint32_t bitrate = CAN_BITRATES[bit_rate_];
-  uint32_t sys_freq = HAL_RCC_GetSysClockFreq();
+  uint32_t pclk1_freq = HAL_RCC_GetPCLK1Freq();
 
-  if (sys_freq % bitrate) {
-    ESP_LOGE(TAG, "sys_freq (%lu Hz) must be a multiply of requested bitrate (%lu bps)", sys_freq, bitrate);
+  if (pclk1_freq % bitrate) {
+    ESP_LOGE(TAG, "PCLK1 frequency (%lu Hz) must be a multiply of requested bitrate (%lu bps)", pclk1_freq, bitrate);
     return false;
   }
-  uint32_t prescaller_tq = sys_freq / bitrate;
+  uint32_t prescaller_tq = pclk1_freq / bitrate;
   if (!(prescaller_tq % 16)) {
     hcan.Init.Prescaler = prescaller_tq / 16;
     hcan.Init.TimeSeg1 = CAN_BS1_13TQ;
@@ -56,7 +56,7 @@ bool STM32Can::setup_internal() {
     hcan.Init.TimeSeg1 = CAN_BS1_2TQ;
     hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
   } else {
-    ESP_LOGE(TAG, "cannot setup timings for sys_freq (%lu Hz) and bitrate (%lu bps)", sys_freq, bitrate);
+    ESP_LOGE(TAG, "cannot setup CAN timings for PCLK1 frequency: %lu Hz and bitrate: %lu bps", pclk1_freq, bitrate);
     return false;
   }
   ESP_LOGCONFIG(TAG, "prescaller: %lu, tseg1: %lx, tseg2: %lx", hcan.Init.Prescaler, hcan.Init.TimeSeg1,
