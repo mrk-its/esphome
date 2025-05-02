@@ -52,10 +52,16 @@
 
 #define USARTx_TX_PIN GPIO_PIN_2
 #define USARTx_TX_GPIO_PORT GPIOA
-#define USARTx_TX_AF GPIO_AF7_USART2
 #define USARTx_RX_PIN GPIO_PIN_3
 #define USARTx_RX_GPIO_PORT GPIOA
+
+#if defined(G0)
+#define USARTx_TX_AF GPIO_AF1_USART2
+#define USARTx_RX_AF GPIO_AF1_USART2
+#else
+#define USARTx_TX_AF GPIO_AF7_USART2
 #define USARTx_RX_AF GPIO_AF7_USART2
+#endif
 
 namespace esphome {
 uint32_t IRAM_ATTR HOT millis();
