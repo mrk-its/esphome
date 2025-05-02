@@ -74,6 +74,7 @@ void swap_flash_banks();
 void init_uart();
 void uart_write_char(char c);
 void uart_write_str(const char *str);
+void log_clock_config();
 
 }  // namespace stm32
 

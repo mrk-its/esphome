@@ -66,9 +66,6 @@ def _translate_pin(value):
 
 def validate_gpio_pin(value):
     value = _translate_pin(value)
-    board = CORE.data[KEY_STM32][KEY_BOARD]
-    if board == "rpipicow" and value == 32:
-        return value  # Special case for Pico-w LED pin
     if value < 0 or value > 63:
         raise cv.Invalid(f"STM32: Invalid pin number: {value}")
     return value

@@ -153,7 +153,7 @@ void _digital_write(uint8_t pin, bool value) {
 }
 void STM32GPIOPin::pin_mode(gpio::Flags flags) { _pin_mode(pin_, flags); }
 
-void STM32GPIOPin::digital_write(bool value) { _digital_write(pin_, value); }
+void STM32GPIOPin::digital_write(bool value) { _digital_write(pin_, value != inverted_); }
 
 std::string STM32GPIOPin::dump_summary() const {
   char buffer[32];
@@ -161,7 +161,7 @@ std::string STM32GPIOPin::dump_summary() const {
   return buffer;
 }
 
-bool STM32GPIOPin::digital_read() { return _digital_read(pin_); }
+bool STM32GPIOPin::digital_read() { return _digital_read(pin_) != inverted_; }
 
 void STM32GPIOPin::detach_interrupt() const {
   // TODO
@@ -177,13 +177,13 @@ void IRAM_ATTR ISRInternalGPIOPin::pin_mode(gpio::Flags flags) {
 }
 
 bool IRAM_ATTR ISRInternalGPIOPin::digital_read() {
-  auto pin_ = ((struct ISRPinArg *) arg_)->pin;
-  return _digital_read(pin_);
+  auto ptr = ((struct ISRPinArg *) arg_);
+  return bool(ptr->inverted) != _digital_read(ptr->pin);
 }
 
 void IRAM_ATTR ISRInternalGPIOPin::digital_write(bool value) {
-  auto pin_ = ((struct ISRPinArg *) arg_)->pin;
-  _digital_write(pin_, value);
+  auto ptr = ((struct ISRPinArg *) arg_);
+  _digital_write(ptr->pin, value != bool(ptr->inverted));
 }
 
 void IRAM_ATTR ISRInternalGPIOPin::clear_interrupt() {

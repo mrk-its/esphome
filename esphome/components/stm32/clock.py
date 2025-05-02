@@ -332,7 +332,6 @@ def generate_l4_clock_config(config):
             """)
         )
     )
-    cg.add(cg.RawStatement("::esphome::stm32::init_uart();"))
 
 
 CONFIG_GENERATORS = {
