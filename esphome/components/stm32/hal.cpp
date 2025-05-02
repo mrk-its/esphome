@@ -21,9 +21,12 @@ uint64_t get_dwt_cycle_cnt() {
 #endif
 
 uint8_t get_active_flash_bank() {
-#if defined(FLASH_BANK_2)
+#if defined(FLASH_BANK_2) && defined(OB_BFB2_ENABLE)
   volatile uint32_t remap = READ_BIT(SYSCFG->MEMRMP, 0x1 << 8);
   return remap == 0 ? FLASH_BANK_1 : FLASH_BANK_2;
+#elif defined(FLASH_BANK_2) && defined(OB_USER_BANK_SWAP)
+  // #error GO - TODO!
+  return 0;
 #else
   return 0;
 #endif
@@ -48,6 +51,8 @@ void swap_flash_banks() {
   HAL_FLASHEx_OBProgram(&ob_config);
   HAL_FLASH_OB_Launch();
   HAL_FLASH_OB_Lock();
+#elif defined(FLASH_BANK_2) && defined(OB_USER_BANK_SWAP)
+// #error G0 - TODO!
 #endif
 }
 static UART_HandleTypeDef UartHandle;
@@ -63,7 +68,10 @@ void init_uart() {
   GPIO_InitStruct.Pin = USARTx_TX_PIN;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
+#ifdef GPIO_SPEED_FAST
   GPIO_InitStruct.Speed = GPIO_SPEED_FAST;
+#endif
+
   GPIO_InitStruct.Alternate = USARTx_TX_AF;
 
   HAL_GPIO_Init(USARTx_TX_GPIO_PORT, &GPIO_InitStruct);
@@ -142,8 +150,6 @@ void log_clock_config() {
   uint32_t uwPLLSource = 0;
   uint32_t sysClockFreq = HAL_RCC_GetSysClockFreq();
   uint32_t hclkFreq = HAL_RCC_GetHCLKFreq();
-  uint32_t pclk1Freq = HAL_RCC_GetPCLK1Freq();
-  uint32_t pclk2Freq = HAL_RCC_GetPCLK2Freq();
 
   HAL_RCC_GetClockConfig(&clkinitstruct, &uwPLLSource);
   HAL_RCC_GetOscConfig(&oscinitstruct);
@@ -187,8 +193,14 @@ void log_clock_config() {
   ESP_LOGI(TAG, "--- Clock Configuration ---");
   ESP_LOGI(TAG, "System Clock Frequency (SYSCLK): %lu Hz (max: %lu Hz)", sysClockFreq, F_CPU);
   ESP_LOGI(TAG, "HCLK Frequency (AHB Bus): %lu Hz", hclkFreq);
+#ifdef HAL_RCC_GetPCLK1Freq
+  uint32_t pclk1Freq = HAL_RCC_GetPCLK1Freq();
   ESP_LOGI(TAG, "PCLK1 Frequency (APB1 Bus): %lu Hz", pclk1Freq);
+#endif
+#ifdef HAL_RCC_GetPCLK2Freq
+  uint32_t pclk2Freq = HAL_RCC_GetPCLK2Freq();
   ESP_LOGI(TAG, "PCLK2 Frequency (APB2 Bus): %lu Hz", pclk2Freq);
+#endif
   ESP_LOGD(TAG, "--- Oscillators ---");
   ESP_LOGD(TAG, "Oscilator Type: %s", oscillatorTypeStr);
   ESP_LOGD(TAG, "HSI State: %s, Calibration Value: %lu", (oscinitstruct.HSIState == RCC_HSI_ON) ? "ON" : "OFF",
@@ -216,11 +228,14 @@ void log_clock_config() {
 
   uint32_t ahb_div = get_ahb_prescaler(clkinitstruct.AHBCLKDivider);
   uint32_t apb1_div = get_apb_prescaler(clkinitstruct.APB1CLKDivider);
-  uint32_t apb2_div = get_apb_prescaler(clkinitstruct.APB2CLKDivider);
 
   ESP_LOGD(TAG, "AHB Prescaler: %lu", ahb_div);
   ESP_LOGD(TAG, "APB1 Prescaler: %lu", apb1_div);
+
+#if !defined(G0)
+  uint32_t apb2_div = get_apb_prescaler(clkinitstruct.APB2CLKDivider);
   ESP_LOGD(TAG, "APB2 Prescaler: %lu", apb2_div);
+#endif
 }
 
 }  // namespace stm32

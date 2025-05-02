@@ -132,7 +132,10 @@ void _pin_mode(uint8_t pin, gpio::Flags flags) {
   GPIO_InitStruct.Pull = (flags & gpio::Flags::FLAG_PULLUP)
                              ? GPIO_PULLUP
                              : ((flags & gpio::Flags::FLAG_PULLDOWN) ? GPIO_PULLDOWN : GPIO_NOPULL);
+
+#ifdef GPIO_SPEED_HIGH
   GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
+#endif
 
   if (port) {
     HAL_GPIO_Init(port, &GPIO_InitStruct);
