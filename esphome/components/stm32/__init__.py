@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from string import ascii_letters, digits
@@ -75,9 +76,8 @@ CONFIG_SCHEMA = cv.All(
 
 @coroutine_with_priority(1000)
 async def to_code(config):
-    import json
+    _LOGGER.debug("platform config:\n%s", json.dumps(config, indent=2))
 
-    print(json.dumps(config, indent=2))
     # cg.add(stm32_ns.setup_preferences())
 
     # Allow LDF to properly discover dependency including those in preprocessor
@@ -94,6 +94,8 @@ async def to_code(config):
     cg.add_platformio_option("monitor_speed", "115200")
     cg.add_platformio_option("upload_protocol", "stlink")
 
+    if CONF_CLOCK not in config:
+        _LOGGER.warning("no clock configuraton, add 'config:' to generate default one")
     generate_clock_config(config)
 
     # print(config["clock"]["foo"])

@@ -342,6 +342,8 @@ CONFIG_GENERATORS = {
 
 
 def board_clock_config(value):
+    if CONF_CLOCK not in value:
+        return value
     board = value[CONF_BOARD]
     board_family = value[CONF_BOARD_FAMILY]
     clock_config = FAMILY_CLOCK_CONFIGS.get(board_family)
@@ -359,6 +361,8 @@ def board_clock_config(value):
 
 
 def generate_clock_config(config):
+    if CONF_CLOCK not in config:
+        return
     board_family = config[CONF_BOARD_FAMILY]
     config_generator = CONFIG_GENERATORS[board_family]
     config_generator(config)
