@@ -13,7 +13,7 @@ static const char *const TAG = "ota.stm32";
 
 std::unique_ptr<ota::OTABackend> make_ota_backend() { return make_unique<ota::STM32OTABackend>(); }
 
-const uint32_t FLASH_BANK_MASK = 0x7ffff;  // for 512kb BANK
+const uint32_t FLASH_BANK_MASK = (FLASH_BANK_SIZE - 1);  // for 512kb BANK
 const uint32_t BLOCK_MASK = 7;
 
 OTAResponseTypes STM32OTABackend::begin(size_t image_size) {
