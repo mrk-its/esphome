@@ -1,4 +1,4 @@
-#ifdef USE_STM32
+#if defined(USE_STM32) && defined(FLASH_BANK_2)
 #include "esphome/core/defines.h"
 #include "esphome/core/log.h"
 #include "esphome/components/stm32/core.h"

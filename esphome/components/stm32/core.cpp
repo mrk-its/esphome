@@ -8,7 +8,6 @@ const char *TAG = "main";
 
 extern void setup();
 extern void loop();
-#if defined(L4) || defined(G4)
 // Helper functions to get prescaler values
 uint32_t get_ahb_prescaler(uint32_t divider) {
   switch (divider) {
@@ -65,6 +64,7 @@ void log_clock_config() {
   HAL_RCC_GetClockConfig(&clkinitstruct, &uwPLLSource);
   HAL_RCC_GetOscConfig(&oscinitstruct);
 
+#if defined(RCC_PLLSOURCE_NONE)
   const char *pllSourceStr;
   switch (uwPLLSource) {
     case RCC_PLLSOURCE_NONE:
@@ -80,6 +80,7 @@ void log_clock_config() {
       pllSourceStr = "Unknown";
       break;
   }
+#endif
 
   const char *oscillatorTypeStr;
   switch (oscinitstruct.OscillatorType) {
@@ -117,6 +118,7 @@ void log_clock_config() {
            : (oscinitstruct.LSEState == RCC_LSE_BYPASS) ? "BYPASS"
                                                         : "OFF");
   ESP_LOGI(TAG, "LSI State: %s", (oscinitstruct.LSIState == RCC_LSI_ON) ? "ON" : "OFF");
+#if defined(RCC_PLLSOURCE_NONE)
   ESP_LOGI(TAG, "PLL Source: %s", pllSourceStr);
   if (oscinitstruct.PLL.PLLState == RCC_PLL_ON) {
     ESP_LOGI(TAG, "--- PLL Configuration ---");
@@ -126,6 +128,7 @@ void log_clock_config() {
     ESP_LOGI(TAG, "PLL Q Divider (Q): %lu", oscinitstruct.PLL.PLLQ);
     ESP_LOGI(TAG, "PLL R Divider (R): %lu", oscinitstruct.PLL.PLLR);
   }
+#endif
 
   uint32_t ahb_div = get_ahb_prescaler(clkinitstruct.AHBCLKDivider);
   uint32_t apb1_div = get_apb_prescaler(clkinitstruct.APB1CLKDivider);
@@ -135,9 +138,9 @@ void log_clock_config() {
   ESP_LOGI(TAG, "APB1 Prescaler: %lu", apb1_div);
   ESP_LOGI(TAG, "APB2 Prescaler: %lu", apb2_div);
 }
-#else
-void log_clock_config() {}
-#endif
+// #else
+// void log_clock_config() {}
+// #endif
 
 int main() {
   HAL_Init();
@@ -168,9 +171,9 @@ int main() {
   setup();
 
   log_clock_config();
-
+#if defined(FLASH_BANK_2)
   ESP_LOGI(TAG, "Active flash bank: %d", ::esphome::stm32::get_active_flash_bank());
-
+#endif
   while (1) {
     loop();
   }
