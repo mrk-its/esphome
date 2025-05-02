@@ -23,7 +23,11 @@ class STM32Can : public canbus::Canbus {
   canbus::Error read_message(struct canbus::CanFrame *frame) override;
 
  private:
+#if defined(FDCAN1)
+  FDCAN_HandleTypeDef hcan;
+#else
   CAN_HandleTypeDef hcan;
+#endif
 };
 }  // namespace stm32_can
 }  // namespace esphome

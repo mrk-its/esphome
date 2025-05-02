@@ -22,6 +22,7 @@ const uint32_t CAN_BITRATES[] = {
 static_assert((canbus::CanSpeed::CAN_1000KBPS + 1 == sizeof(CAN_BITRATES) / 4));
 
 bool STM32Can::setup_internal() {
+#if !defined(FDCAN1)
   CAN_FilterTypeDef filter = {0};
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
@@ -97,10 +98,14 @@ bool STM32Can::setup_internal() {
     }
     return true;
   }
+#else
+#warning TODO - add FDCAN support
+#endif
   return false;
 }
 
 canbus::Error STM32Can::send_message(struct canbus::CanFrame *frame) {
+#if !defined(FDCAN1)
   CAN_TxHeaderTypeDef TxHeader;
   uint32_t TxMailbox = 0;
 
@@ -120,11 +125,15 @@ canbus::Error STM32Can::send_message(struct canbus::CanFrame *frame) {
   } else {
     ESP_LOGE(TAG, "can't send message");
   }
+#else
+#warning TODO - add FDCAN support
+#endif
 
   return canbus::ERROR_OK;
 };
 
 canbus::Error STM32Can::read_message(struct canbus::CanFrame *frame) {
+#if !defined(FDCAN1)
   auto fifo0_cnt = HAL_CAN_GetRxFifoFillLevel(&hcan, 0);
   auto fifo1_cnt = HAL_CAN_GetRxFifoFillLevel(&hcan, 1);
   if (fifo1_cnt) {
@@ -146,7 +155,9 @@ canbus::Error STM32Can::read_message(struct canbus::CanFrame *frame) {
   if (err) {
     ESP_LOGD(TAG, "err: %ld", err);
   }
-
+#else
+#warning TODO - add FDCAN support
+#endif
   return canbus::ERROR_NOMSG;
 };
 
