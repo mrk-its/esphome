@@ -8,6 +8,10 @@ const char *TAG = "main";
 
 extern void setup();
 extern void loop();
+
+namespace esphome {
+namespace stm32 {
+
 // Helper functions to get prescaler values
 uint32_t get_ahb_prescaler(uint32_t divider) {
   switch (divider) {
@@ -105,28 +109,28 @@ void log_clock_config() {
   ESP_LOGI(TAG, "HCLK Frequency (AHB Bus): %lu Hz", hclkFreq);
   ESP_LOGI(TAG, "PCLK1 Frequency (APB1 Bus): %lu Hz", pclk1Freq);
   ESP_LOGI(TAG, "PCLK2 Frequency (APB2 Bus): %lu Hz", pclk2Freq);
-  ESP_LOGI(TAG, "--- Oscillators ---");
-  ESP_LOGI(TAG, "Oscilator Type: %s", oscillatorTypeStr);
-  ESP_LOGI(TAG, "HSI State: %s, Calibration Value: %lu", (oscinitstruct.HSIState == RCC_HSI_ON) ? "ON" : "OFF",
+  ESP_LOGD(TAG, "--- Oscillators ---");
+  ESP_LOGD(TAG, "Oscilator Type: %s", oscillatorTypeStr);
+  ESP_LOGD(TAG, "HSI State: %s, Calibration Value: %lu", (oscinitstruct.HSIState == RCC_HSI_ON) ? "ON" : "OFF",
            oscinitstruct.HSICalibrationValue);
-  ESP_LOGI(TAG, "HSE State: %s",
+  ESP_LOGD(TAG, "HSE State: %s",
            (oscinitstruct.HSEState == RCC_HSE_ON)       ? "ON"
            : (oscinitstruct.HSEState == RCC_HSE_BYPASS) ? "BYPASS"
                                                         : "OFF");
-  ESP_LOGI(TAG, "LSE State: %s",
+  ESP_LOGD(TAG, "LSE State: %s",
            (oscinitstruct.LSEState == RCC_LSE_ON)       ? "ON"
            : (oscinitstruct.LSEState == RCC_LSE_BYPASS) ? "BYPASS"
                                                         : "OFF");
-  ESP_LOGI(TAG, "LSI State: %s", (oscinitstruct.LSIState == RCC_LSI_ON) ? "ON" : "OFF");
+  ESP_LOGD(TAG, "LSI State: %s", (oscinitstruct.LSIState == RCC_LSI_ON) ? "ON" : "OFF");
 #if defined(RCC_PLLSOURCE_NONE)
-  ESP_LOGI(TAG, "PLL Source: %s", pllSourceStr);
+  ESP_LOGD(TAG, "PLL Source: %s", pllSourceStr);
   if (oscinitstruct.PLL.PLLState == RCC_PLL_ON) {
-    ESP_LOGI(TAG, "--- PLL Configuration ---");
-    ESP_LOGI(TAG, "PLL Multiplier (N): %lu", oscinitstruct.PLL.PLLN);
-    ESP_LOGI(TAG, "PLL Divider (M): %lu", oscinitstruct.PLL.PLLM);
-    ESP_LOGI(TAG, "PLL P Divider (P): %lu", oscinitstruct.PLL.PLLP);
-    ESP_LOGI(TAG, "PLL Q Divider (Q): %lu", oscinitstruct.PLL.PLLQ);
-    ESP_LOGI(TAG, "PLL R Divider (R): %lu", oscinitstruct.PLL.PLLR);
+    ESP_LOGD(TAG, "--- PLL Configuration ---");
+    ESP_LOGD(TAG, "PLL Multiplier (N): %lu", oscinitstruct.PLL.PLLN);
+    ESP_LOGD(TAG, "PLL Divider (M): %lu", oscinitstruct.PLL.PLLM);
+    ESP_LOGD(TAG, "PLL P Divider (P): %lu", oscinitstruct.PLL.PLLP);
+    ESP_LOGD(TAG, "PLL Q Divider (Q): %lu", oscinitstruct.PLL.PLLQ);
+    ESP_LOGD(TAG, "PLL R Divider (R): %lu", oscinitstruct.PLL.PLLR);
   }
 #endif
 
@@ -134,13 +138,16 @@ void log_clock_config() {
   uint32_t apb1_div = get_apb_prescaler(clkinitstruct.APB1CLKDivider);
   uint32_t apb2_div = get_apb_prescaler(clkinitstruct.APB2CLKDivider);
 
-  ESP_LOGI(TAG, "AHB Prescaler: %lu", ahb_div);
-  ESP_LOGI(TAG, "APB1 Prescaler: %lu", apb1_div);
-  ESP_LOGI(TAG, "APB2 Prescaler: %lu", apb2_div);
+  ESP_LOGD(TAG, "AHB Prescaler: %lu", ahb_div);
+  ESP_LOGD(TAG, "APB1 Prescaler: %lu", apb1_div);
+  ESP_LOGD(TAG, "APB2 Prescaler: %lu", apb2_div);
 }
 // #else
 // void log_clock_config() {}
 // #endif
+
+}  // namespace stm32
+}  // namespace esphome
 
 int main() {
   HAL_Init();
@@ -170,7 +177,7 @@ int main() {
 
   setup();
 
-  log_clock_config();
+  ::esphome::stm32::log_clock_config();
 #if defined(FLASH_BANK_2)
   ESP_LOGI(TAG, "Active flash bank: %d", ::esphome::stm32::get_active_flash_bank());
 #endif
