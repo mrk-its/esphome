@@ -1,7 +1,8 @@
-#if defined(USE_STM32) && defined(FLASH_BANK_2)
+#ifdef USE_STM32
 #include "esphome/core/defines.h"
 #include "esphome/core/log.h"
 #include "esphome/components/stm32/core.h"
+#ifdef FLASH_BANK_2
 #include "ota_backend.h"
 #include "ota_backend_stm32.h"
 
@@ -82,4 +83,5 @@ void STM32OTABackend::abort() {}
 }  // namespace ota
 }  // namespace esphome
 
+#endif  // FLASH_BANK_2
 #endif  // USE_STM32
