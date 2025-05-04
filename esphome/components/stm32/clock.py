@@ -3,7 +3,7 @@ from textwrap import dedent
 from esphome import codegen as cg, config_validation as cv
 from esphome.const import CONF_BOARD
 
-from .const import CONF_BOARD_FAMILY, CONF_CLOCK
+from .const import CONF_BOARD_SERIES, CONF_CLOCK
 
 
 def optional_dict(schema, default_value=None):
@@ -433,7 +433,7 @@ def board_clock_config(value):
     if CONF_CLOCK not in value:
         return value
     board = value[CONF_BOARD]
-    board_family = value[CONF_BOARD_FAMILY]
+    board_family = value[CONF_BOARD_SERIES]
     clock_config = FAMILY_CLOCK_CONFIGS.get(board_family)
     if not clock_config:
         raise cv.Invalid(f"Can't find clock config for '{board_family}' board family")
@@ -451,6 +451,6 @@ def board_clock_config(value):
 def generate_clock_config(config):
     if CONF_CLOCK not in config:
         return
-    board_family = config[CONF_BOARD_FAMILY]
+    board_family = config[CONF_BOARD_SERIES]
     config_generator = CONFIG_GENERATORS[board_family]
     config_generator(config)

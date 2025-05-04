@@ -17,9 +17,9 @@ void HOT Logger::write_msg_(const char *msg) {
   ::esphome::stm32::uart_write_str("\n");
 }
 
-const char *const UART_SELECTIONS[] = {"UART0", "UART1", "UART2"};
+const char *const UART_SELECTIONS[] = {"UART2"};
 
-const char *Logger::get_uart_selection_() { return UART_SELECTIONS[2]; }
+const char *Logger::get_uart_selection_() { return UART_SELECTIONS[0]; }
 
 }  // namespace logger
 }  // namespace esphome

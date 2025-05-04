@@ -38,8 +38,8 @@ from esphome.const import (
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
     PLATFORM_RP2040,
-    PLATFORM_STM32,
     PLATFORM_RTL87XX,
+    PLATFORM_STM32,
     SECRETS_FILES,
 )
 from esphome.core import CORE, EsphomeError, coroutine

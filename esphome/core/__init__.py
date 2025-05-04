@@ -641,16 +641,16 @@ class EsphomeCore:
         return self.target_platform == PLATFORM_RP2040
 
     @property
-    def is_stm32(self):
-        return self.target_platform == PLATFORM_STM32
-
-    @property
     def is_bk72xx(self):
         return self.target_platform == PLATFORM_BK72XX
 
     @property
     def is_rtl87xx(self):
         return self.target_platform == PLATFORM_RTL87XX
+
+    @property
+    def is_stm32(self):
+        return self.target_platform == PLATFORM_STM32
 
     @property
     def is_libretiny(self):

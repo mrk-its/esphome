@@ -55,10 +55,10 @@
 #define USARTx_RX_PIN GPIO_PIN_3
 #define USARTx_RX_GPIO_PORT GPIOA
 
-#if defined(G0)
+#if defined(GPIO_AF1_USART2)
 #define USARTx_TX_AF GPIO_AF1_USART2
 #define USARTx_RX_AF GPIO_AF1_USART2
-#else
+#elif defined(GPIO_AF7_USART2)
 #define USARTx_TX_AF GPIO_AF7_USART2
 #define USARTx_RX_AF GPIO_AF7_USART2
 #endif
@@ -75,16 +75,20 @@ void IRAM_ATTR HOT arch_feed_wdt();
 uint8_t progmem_read_byte(const uint8_t *addr);
 
 namespace stm32 {
-uint8_t get_active_flash_bank();
-void swap_flash_banks();
+void hal_init();
 void init_uart();
 void uart_write_char(char c);
 void uart_write_str(const char *str);
 void log_clock_config();
+uint8_t get_active_flash_bank();
+void swap_flash_banks();
 
 }  // namespace stm32
 
 };  // namespace esphome
+
+extern void setup();
+extern void loop();
 
 extern "C" {
 void SysTick_Handler(void);

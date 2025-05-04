@@ -15,6 +15,7 @@ PLATFORM_LIBRETINY_OLDSTYLE = "libretiny"
 PLATFORM_RP2040 = "rp2040"
 PLATFORM_STM32 = "stm32"
 PLATFORM_RTL87XX = "rtl87xx"
+PLATFORM_STM32 = "stm32"
 
 
 SOURCE_FILE_EXTENSIONS = {".cpp", ".hpp", ".h", ".c", ".tcc", ".ino"}

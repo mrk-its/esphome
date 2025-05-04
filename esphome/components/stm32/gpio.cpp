@@ -139,7 +139,6 @@ void _pin_mode(uint8_t pin, gpio::Flags flags) {
 
   if (port) {
     HAL_GPIO_Init(port, &GPIO_InitStruct);
-    HAL_GPIO_WritePin(port, pin_to_mask(pin), GPIO_PIN_RESET);
   }
 }
 
