@@ -319,6 +319,7 @@ async def to_code(config):
         cg.add_define("USE_LOGGER_USB_CDC")
     except cv.Invalid:
         pass
+
     # Register at end for safe mode
     await cg.register_component(log, config)
 
