@@ -1,10 +1,16 @@
+from functools import reduce
+import json
+import logging
 from textwrap import dedent
 
 from esphome import codegen as cg, config_validation as cv
+from esphome.config_helpers import merge_config
 from esphome.const import CONF_BOARD
 
 from ..const import CONF_BOARD_SERIES, CONF_CLOCK
 from . import f1, g0, g4, l4
+
+logger = logging.getLogger(__name__)
 
 SYSCLKSOURCE = cv.one_of(
     "RCC_SYSCLKSOURCE_MSI",
@@ -13,7 +19,7 @@ SYSCLKSOURCE = cv.one_of(
     "RCC_SYSCLKSOURCE_PLLCLK",
 )
 
-FAMILY_CLOCK_CONFIGS = {
+SERIES_CLOCK_CONFIGS = {
     "F1": f1.CLOCK_CONFIG,
     "L4": l4.CLOCK_CONFIG,
     "G0": g0.CLOCK_CONFIG,
@@ -25,6 +31,10 @@ CLOCK_DEFAULTS = {
     "L4": l4.CLOCK_DEFAULTS,
     "G0": g0.CLOCK_DEFAULTS,
     "G4": g4.CLOCK_DEFAULTS,
+    **f1.BOARD_CLOCK_DEFAULTS,
+    **l4.BOARD_CLOCK_DEFAULTS,
+    **g0.BOARD_CLOCK_DEFAULTS,
+    **g4.BOARD_CLOCK_DEFAULTS,
 }
 
 
@@ -188,24 +198,25 @@ def board_clock_config(value):
     if CONF_CLOCK not in value:
         return value
     board = value[CONF_BOARD]
-    board_family = value[CONF_BOARD_SERIES]
-    clock_config = FAMILY_CLOCK_CONFIGS.get(board_family)
+    board_series = value[CONF_BOARD_SERIES]
+    clock_config = SERIES_CLOCK_CONFIGS.get(board_series)
     if not clock_config:
-        raise cv.Invalid(f"Can't find clock config for '{board_family}' board family")
+        raise cv.Invalid(f"Can't find clock config for '{board_series}' board family")
 
-    board_defaults = CLOCK_DEFAULTS.get(board) or CLOCK_DEFAULTS.get(board_family)
-    if board_defaults is None:
-        raise cv.Invalid(
-            f"can't find defaults for '{board}' / '{board_family}' board family"
-        )
+    series_defaults = CLOCK_DEFAULTS.get(board_series) or {}
+    board_defaults = CLOCK_DEFAULTS.get(board) or {}
+    user_defaults = value[CONF_CLOCK] or {}
 
-    value[CONF_CLOCK] = clock_config(value[CONF_CLOCK] or board_defaults)
+    config = reduce(merge_config, (series_defaults, board_defaults, user_defaults))
+
+    value[CONF_CLOCK] = clock_config(config)
     return value
 
 
 def generate_clock_config(config):
     if CONF_CLOCK not in config:
         return
+    logger.debug("clock config: %s", json.dumps(config, indent=2))
     board_family = config[CONF_BOARD_SERIES]
     config_generator = CONFIG_GENERATORS[board_family]
     config_generator(config)

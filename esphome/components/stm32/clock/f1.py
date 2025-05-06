@@ -20,13 +20,22 @@ class SYSCLKSOURCE(HALEnum):
 
 
 class PLL_MUL(HALEnum):
+    RCC_PLL_MUL2 = auto()
+    RCC_PLL_MUL3 = auto()
     RCC_PLL_MUL4 = auto()
     RCC_PLL_MUL5 = auto()
     RCC_PLL_MUL6 = auto()
+    RCC_PLL_MUL6_5 = auto()
     RCC_PLL_MUL7 = auto()
     RCC_PLL_MUL8 = auto()
     RCC_PLL_MUL9 = auto()
-    RCC_PLL_MUL6_5 = auto()
+    RCC_PLL_MUL10 = auto()
+    RCC_PLL_MUL11 = auto()
+    RCC_PLL_MUL12 = auto()
+    RCC_PLL_MUL13 = auto()
+    RCC_PLL_MUL14 = auto()
+    RCC_PLL_MUL15 = auto()
+    RCC_PLL_MUL16 = auto()
 
 
 class PLL_SOURCE(HALEnum):
@@ -106,11 +115,11 @@ CLOCK_CONFIG = cv.Schema(
 
 CLOCK_DEFAULTS = {
     "oscillator": {
-        "hse": {},
+        "hsi": {},
         "pll": {
             "state": PLL_STATE.RCC_PLL_ON.value,
-            "source": PLL_SOURCE.RCC_PLLSOURCE_HSE.value,
-            "mul": PLL_MUL.RCC_PLL_MUL9.value,
+            "source": PLL_SOURCE.RCC_PLLSOURCE_HSI_DIV2.value,
+            "mul": PLL_MUL.RCC_PLL_MUL16.value,
         },
     },
     "clock": {
@@ -118,4 +127,18 @@ CLOCK_DEFAULTS = {
         "flash_latency": FLASH_LATENCY.FLASH_LATENCY_2.value,
         "apb1_clk_divider": RCC_HCLK_DIVIDER.RCC_HCLK_DIV2.value,
     },
+}
+
+BOARD_CLOCK_DEFAULTS = {
+    "blackpill_f103c8": {
+        "oscillator": {
+            "hse": {},
+            "hsi": {},
+            "pll": {
+                "state": PLL_STATE.RCC_PLL_ON.value,
+                "source": PLL_SOURCE.RCC_PLLSOURCE_HSE.value,
+                "mul": PLL_MUL.RCC_PLL_MUL9.value,
+            },
+        },
+    }
 }

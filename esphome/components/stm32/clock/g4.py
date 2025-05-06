@@ -31,3 +31,5 @@ CLOCK_DEFAULTS = (
         },
     },
 )
+
+BOARD_CLOCK_DEFAULTS = {}

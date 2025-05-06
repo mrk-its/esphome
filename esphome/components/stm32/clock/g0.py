@@ -104,3 +104,5 @@ CLOCK_DEFAULTS = {
         "flash_latency": FLASH_LATENCY.FLASH_LATENCY_2.value,
     },
 }
+
+BOARD_CLOCK_DEFAULTS = {}

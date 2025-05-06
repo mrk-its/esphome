@@ -66,7 +66,6 @@ CLOCK_CONFIG = cv.Schema(
         ),
     }
 )
-print(CLOCK_CONFIG)
 
 CLOCK_DEFAULTS = {
     "control_voltage_scaling": PWR_REGULATOR_VOLTAGE_SCALE.PWR_REGULATOR_VOLTAGE_SCALE1.value,
@@ -87,4 +86,5 @@ CLOCK_DEFAULTS = {
         "flash_latency": FLASH_LATENCY.FLASH_LATENCY_4.value,
     },
 }
-print(CLOCK_DEFAULTS)
+
+BOARD_CLOCK_DEFAULTS = {}
