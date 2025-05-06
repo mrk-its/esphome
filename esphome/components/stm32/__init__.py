@@ -12,9 +12,10 @@ from esphome.const import (
 from esphome.core import CORE, coroutine_with_priority
 
 from .boards import detect_board_series
-from .clock import board_clock_config, generate_clock_config, optional_dict
+from .clock import board_clock_config, generate_clock_config
 from .const import CONF_BOARD_SERIES, CONF_CLOCK, KEY_BOARD, KEY_STM32
 from .gpio import stm32_pin_to_code  # noqa
+from .utils import optional_dict
 
 _LOGGER = logging.getLogger(__name__)
 CODEOWNERS = ["@mrk-its"]
