@@ -68,23 +68,23 @@ CLOCK_CONFIG = cv.Schema(
 )
 
 CLOCK_DEFAULTS = {
-    "control_voltage_scaling": PWR_REGULATOR_VOLTAGE_SCALE.PWR_REGULATOR_VOLTAGE_SCALE1.value,
-    "oscillator": {
-        "hsi": {},
-        "pll": {
-            "state": PLL_STATE.RCC_PLL_ON.value,
-            "source": PLL_SOURCE.RCC_PLLSOURCE_HSI.value,
-            "pllm": 1,
-            "plln": 10,
-            "pllp": PLLP.RCC_PLLP_DIV7.value,
-            "pllq": PLLQ.RCC_PLLQ_DIV2.value,
-            "pllr": PLLR.RCC_PLLR_DIV2.value,
+    "L4": {
+        "control_voltage_scaling": PWR_REGULATOR_VOLTAGE_SCALE.PWR_REGULATOR_VOLTAGE_SCALE1.value,
+        "oscillator": {
+            "hsi": {},
+            "pll": {
+                "state": PLL_STATE.RCC_PLL_ON.value,
+                "source": PLL_SOURCE.RCC_PLLSOURCE_HSI.value,
+                "pllm": 1,
+                "plln": 10,
+                "pllp": PLLP.RCC_PLLP_DIV7.value,
+                "pllq": PLLQ.RCC_PLLQ_DIV2.value,
+                "pllr": PLLR.RCC_PLLR_DIV2.value,
+            },
         },
-    },
-    "clock": {
-        "sys_clk_source": SYSCLKSOURCE.RCC_SYSCLKSOURCE_PLLCLK.value,
-        "flash_latency": FLASH_LATENCY.FLASH_LATENCY_4.value,
-    },
+        "clock": {
+            "sys_clk_source": SYSCLKSOURCE.RCC_SYSCLKSOURCE_PLLCLK.value,
+            "flash_latency": FLASH_LATENCY.FLASH_LATENCY_4.value,
+        },
+    }
 }
-
-BOARD_CLOCK_DEFAULTS = {}

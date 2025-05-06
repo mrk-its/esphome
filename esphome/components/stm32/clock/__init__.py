@@ -7,8 +7,8 @@ from esphome import codegen as cg, config_validation as cv
 from esphome.config_helpers import merge_config
 from esphome.const import CONF_BOARD
 
-from ..const import CONF_BOARD_SERIES, CONF_CLOCK
-from . import f1, g0, g4, l4
+from ..const import CONF_BOARD_FREQ, CONF_BOARD_SERIES, CONF_CLOCK
+from . import f1, f4, g0, g4, l4
 
 logger = logging.getLogger(__name__)
 
@@ -21,20 +21,18 @@ SYSCLKSOURCE = cv.one_of(
 
 SERIES_CLOCK_CONFIGS = {
     "F1": f1.CLOCK_CONFIG,
+    "F4": f4.CLOCK_CONFIG,
     "L4": l4.CLOCK_CONFIG,
     "G0": g0.CLOCK_CONFIG,
     "G4": g4.CLOCK_CONFIG,
 }
 
 CLOCK_DEFAULTS = {
-    "F1": f1.CLOCK_DEFAULTS,
-    "L4": l4.CLOCK_DEFAULTS,
-    "G0": g0.CLOCK_DEFAULTS,
-    "G4": g4.CLOCK_DEFAULTS,
-    **f1.BOARD_CLOCK_DEFAULTS,
-    **l4.BOARD_CLOCK_DEFAULTS,
-    **g0.BOARD_CLOCK_DEFAULTS,
-    **g4.BOARD_CLOCK_DEFAULTS,
+    **f1.CLOCK_DEFAULTS,
+    **f4.CLOCK_DEFAULTS,
+    **l4.CLOCK_DEFAULTS,
+    **g0.CLOCK_DEFAULTS,
+    **g4.CLOCK_DEFAULTS,
 }
 
 
@@ -188,6 +186,7 @@ def _generate_clock_config(config):
 
 CONFIG_GENERATORS = {
     "F1": _generate_clock_config,
+    "F4": _generate_clock_config,
     "L4": _generate_clock_config,
     "G4": _generate_clock_config,
     "G0": _generate_clock_config,
@@ -199,15 +198,19 @@ def board_clock_config(value):
         return value
     board = value[CONF_BOARD]
     board_series = value[CONF_BOARD_SERIES]
+    board_freq = value[CONF_BOARD_FREQ]
     clock_config = SERIES_CLOCK_CONFIGS.get(board_series)
     if not clock_config:
         raise cv.Invalid(f"Can't find clock config for '{board_series}' board family")
 
     series_defaults = CLOCK_DEFAULTS.get(board_series) or {}
+    freq_defaults = CLOCK_DEFAULTS.get(board_freq) or {}
     board_defaults = CLOCK_DEFAULTS.get(board) or {}
     user_defaults = value[CONF_CLOCK] or {}
 
-    config = reduce(merge_config, (series_defaults, board_defaults, user_defaults))
+    config = reduce(
+        merge_config, (series_defaults, freq_defaults, board_defaults, user_defaults)
+    )
 
     value[CONF_CLOCK] = clock_config(config)
     return value

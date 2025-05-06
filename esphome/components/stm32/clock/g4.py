@@ -5,13 +5,12 @@ from .l4 import (  # noqa: F401
     PLL_STATE,
     PLLP,
     PLLQ,
-    PLLR,
     PWR_REGULATOR_VOLTAGE_SCALE,
     SYSCLKSOURCE,
 )
 
-CLOCK_DEFAULTS = (
-    {
+CLOCK_DEFAULTS = {
+    "G4": {
         "control_voltage_scaling": PWR_REGULATOR_VOLTAGE_SCALE.PWR_REGULATOR_VOLTAGE_SCALE1_BOOST.value,
         "oscillator": {
             "hsi": {},
@@ -22,14 +21,11 @@ CLOCK_DEFAULTS = (
                 "plln": 85,
                 "pllp": PLLP.RCC_PLLP_DIV2.value,
                 "pllq": PLLQ.RCC_PLLQ_DIV2.value,
-                "pllr": PLLR.RCC_PLLR_DIV2.value,
             },
         },
         "clock": {
             "sys_clk_source": SYSCLKSOURCE.RCC_SYSCLKSOURCE_PLLCLK.value,
             "flash_latency": FLASH_LATENCY.FLASH_LATENCY_4.value,
         },
-    },
-)
-
-BOARD_CLOCK_DEFAULTS = {}
+    }
+}

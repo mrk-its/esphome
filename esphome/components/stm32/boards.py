@@ -5,7 +5,7 @@ from esphome import platformio_api
 import esphome.config_validation as cv
 from esphome.const import CONF_BOARD
 
-from .const import CONF_BOARD_SERIES
+from .const import CONF_BOARD_FREQ, CONF_BOARD_SERIES
 
 STM32_BASE_PINS = {
     "LED": 5,
@@ -43,12 +43,23 @@ def platformio_get_board_series(board):
     return mcu and get_board_series(mcu)
 
 
-def detect_board_series(platform):
+def detect_board_details(platform):
     if platform.get(CONF_BOARD_SERIES):
         return platform
     board = platform[CONF_BOARD]
-    board_series = get_board_series(board) or platformio_get_board_series(board)
+    board_details = platformio_get_board_details(board)
+    board_series = platform.get(CONF_BOARD_SERIES)
+    board_freq = platform.get(CONF_BOARD_FREQ)
+    if not board_series:
+        board_series = get_board_series(board_details["mcu"])
+        if board_series:
+            platform[CONF_BOARD_SERIES] = board_series
+    if not board_freq:
+        board_freq = board_details["fcpu"]
+        board_freq = f"{board_freq // 1000000}Mhz"
+        platform[CONF_BOARD_FREQ] = board_freq
     if not board_series:
         raise cv.Invalid(f"Can't detect board series for '{board}'")
-    platform[CONF_BOARD_SERIES] = board_series
+    if not board_freq:
+        raise cv.Invalid(f"Can't detect board freq for '{board}'")
     return platform

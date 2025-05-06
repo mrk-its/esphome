@@ -114,22 +114,21 @@ CLOCK_CONFIG = cv.Schema(
 )
 
 CLOCK_DEFAULTS = {
-    "oscillator": {
-        "hsi": {},
-        "pll": {
-            "state": PLL_STATE.RCC_PLL_ON.value,
-            "source": PLL_SOURCE.RCC_PLLSOURCE_HSI_DIV2.value,
-            "mul": PLL_MUL.RCC_PLL_MUL16.value,
+    "F1": {
+        "oscillator": {
+            "hsi": {},
+            "pll": {
+                "state": PLL_STATE.RCC_PLL_ON.value,
+                "source": PLL_SOURCE.RCC_PLLSOURCE_HSI_DIV2.value,
+                "mul": PLL_MUL.RCC_PLL_MUL16.value,
+            },
+        },
+        "clock": {
+            "sys_clk_source": SYSCLKSOURCE.RCC_SYSCLKSOURCE_PLLCLK.value,
+            "flash_latency": FLASH_LATENCY.FLASH_LATENCY_2.value,
+            "apb1_clk_divider": RCC_HCLK_DIVIDER.RCC_HCLK_DIV2.value,
         },
     },
-    "clock": {
-        "sys_clk_source": SYSCLKSOURCE.RCC_SYSCLKSOURCE_PLLCLK.value,
-        "flash_latency": FLASH_LATENCY.FLASH_LATENCY_2.value,
-        "apb1_clk_divider": RCC_HCLK_DIVIDER.RCC_HCLK_DIV2.value,
-    },
-}
-
-BOARD_CLOCK_DEFAULTS = {
     "blackpill_f103c8": {
         "oscillator": {
             "hse": {},
@@ -140,5 +139,5 @@ BOARD_CLOCK_DEFAULTS = {
                 "mul": PLL_MUL.RCC_PLL_MUL9.value,
             },
         },
-    }
+    },
 }
