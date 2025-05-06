@@ -67,11 +67,28 @@ bool STM32Can::setup_internal() {
   __HAL_RCC_CAN1_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
-  GPIO_InitStruct.Pin = GPIO_PIN_11 | GPIO_PIN_12;
+  GPIO_InitStruct.Pin = GPIO_PIN_11;
+
+  // cubemx code for F1 sets Mode=GPIO_MODE_INPUT;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+#ifdef GPIO_SPEED_HIGH
+  GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
+#endif
+#ifdef GPIO_AF9_CAN1
   GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
+#endif
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_12;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+#ifdef GPIO_SPEED_HIGH
+  GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
+#endif
+#ifdef GPIO_AF9_CAN1
+  GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
+#endif
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   if (HAL_CAN_Init(&hcan) == HAL_OK) {
     // TODO: make sure ErrorCode is 0 and State is READY
