@@ -1,7 +1,6 @@
 #ifdef USE_STM32
 #include "logger.h"
 #include "esphome/core/log.h"
-#include "esphome/components/stm32/core.h"
 
 extern void uart_write_str(const char *str);
 
@@ -10,11 +9,18 @@ namespace logger {
 
 static const char *const TAG = "logger";
 
-void Logger::pre_setup() { global_logger = this; }
+void Logger::pre_setup() {
+  global_logger = this;
+  hw_uart_ = nullptr;
+}
+
+void Logger::set_hw_uart(esphome::uart::UARTComponent *uart) { hw_uart_ = uart; }
 
 void HOT Logger::write_msg_(const char *msg) {
-  ::esphome::stm32::uart_write_str(msg);
-  ::esphome::stm32::uart_write_str("\n");
+  if (hw_uart_) {
+    hw_uart_->write_array((uint8_t *) msg, strlen(msg));
+    hw_uart_->write_array((uint8_t *) "\n", 1);
+  }
 }
 
 const char *const UART_SELECTIONS[] = {"UART2"};

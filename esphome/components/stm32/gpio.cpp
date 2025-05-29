@@ -41,7 +41,7 @@ static GPIO_TypeDef *GPIO_PORTS[9] = {GPIOA, GPIOB, GPIOC,
 #endif
 };
 
-static GPIO_TypeDef *pin_to_port(uint8_t pin) {
+GPIO_TypeDef *pin_to_port(uint8_t pin) {
   uint8_t pin_nr = pin >> 4;
   if (pin_nr < 9)
     return GPIO_PORTS[pin_nr];
@@ -159,7 +159,7 @@ void STM32GPIOPin::digital_write(bool value) { _digital_write(pin_, value != inv
 
 std::string STM32GPIOPin::dump_summary() const {
   char buffer[32];
-  snprintf(buffer, sizeof(buffer), "GPIO%u", pin_);
+  snprintf(buffer, sizeof(buffer), "P%c%u", 'A' + (pin_ >> 4), pin_ & 0xf);
   return buffer;
 }
 

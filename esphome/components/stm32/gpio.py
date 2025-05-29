@@ -18,7 +18,7 @@ from esphome.const import (
 from esphome.core import CORE
 
 from . import boards
-from .const import KEY_BOARD, KEY_STM32, stm32_ns
+from .const import CONF_AF, KEY_BOARD, KEY_STM32, stm32_ns
 
 STM32GPIOPin = stm32_ns.class_("STM32GPIOPin", cg.InternalGPIOPin)
 
@@ -91,6 +91,10 @@ STM32_PIN_SCHEMA = cv.All(
         STM32GPIOPin,
         validate_gpio_pin,
         modes=pins.GPIO_STANDARD_MODES + (CONF_ANALOG,),
+    ).extend(
+        {
+            cv.Optional(CONF_AF): cv.int_range(0, 15),
+        }
     ),
     validate_supports,
 )
@@ -104,4 +108,6 @@ async def stm32_pin_to_code(config):
     cg.add(var.set_pin(num))
     cg.add(var.set_inverted(config[CONF_INVERTED]))
     cg.add(var.set_flags(pins.gpio_flags_expr(config[CONF_MODE])))
+    if CONF_AF in config:
+        cg.add(var.set_af(config[CONF_AF]))
     return var

@@ -22,6 +22,10 @@
 #include <driver/uart.h>
 #endif  // USE_ESP_IDF
 
+#ifdef USE_STM32
+#include "esphome/components/uart/uart_component.h"
+#endif
+
 namespace esphome {
 
 namespace logger {
@@ -102,6 +106,10 @@ class Logger : public Component {
   void log_vprintf_(int level, const char *tag, int line, const __FlashStringHelper *format, va_list args);  // NOLINT
 #endif
 
+#ifdef USE_STM32
+  void set_hw_uart(esphome::uart::UARTComponent *uart);
+#endif
+
  protected:
   void write_header_(int level, const char *tag, int line);
   void write_footer_();
@@ -157,8 +165,9 @@ class Logger : public Component {
 #if defined(USE_ESP32) || defined(USE_ESP8266) || defined(USE_RP2040)
   UARTSelection uart_{UART_SELECTION_UART0};
 #endif
-#if defined(USE_STM32)
+#ifdef USE_STM32
   UARTSelection uart_{UART_SELECTION_UART2};
+  esphome::uart::UARTComponent *hw_uart_;
 #endif
 #ifdef USE_LIBRETINY
   UARTSelection uart_{UART_SELECTION_DEFAULT};

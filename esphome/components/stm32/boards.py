@@ -15,7 +15,7 @@ STM32_BOARD_PINS = {}
 
 BOARD_SERIES = {}
 
-SERIES_RE = re.compile("(nucleo_|stm32)([fghl][0-9])", re.I)
+SERIES_RE = re.compile("(nucleo_|stm32)([fghlu][0-9])", re.I)
 
 
 def get_board_series(name):

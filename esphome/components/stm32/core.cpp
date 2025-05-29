@@ -87,52 +87,7 @@ void hal_init() {
 #endif
 }
 
-static UART_HandleTypeDef UartHandle;
-
-void init_uart() {
-  GPIO_InitTypeDef GPIO_InitStruct;
-
-  USARTx_TX_GPIO_CLK_ENABLE();
-  USARTx_RX_GPIO_CLK_ENABLE();
-
-  USARTx_CLK_ENABLE();
-
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-#ifdef GPIO_SPEED_FAST
-  GPIO_InitStruct.Speed = GPIO_SPEED_FAST;
-#endif
-
-  GPIO_InitStruct.Pin = USARTx_TX_PIN;
-#ifdef USARTx_TX_AF
-  GPIO_InitStruct.Alternate = USARTx_TX_AF;
-#endif
-  HAL_GPIO_Init(USARTx_TX_GPIO_PORT, &GPIO_InitStruct);
-
-  GPIO_InitStruct.Pin = USARTx_RX_PIN;
-#ifdef USARTx_RX_AF
-  GPIO_InitStruct.Alternate = USARTx_RX_AF;
-#endif
-  HAL_GPIO_Init(USARTx_RX_GPIO_PORT, &GPIO_InitStruct);
-  UartHandle.Instance = USARTx;
-
-  UartHandle.Init.BaudRate = 115200;
-  UartHandle.Init.WordLength = UART_WORDLENGTH_8B;
-  UartHandle.Init.StopBits = UART_STOPBITS_1;
-  UartHandle.Init.Parity = UART_PARITY_NONE;
-  UartHandle.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  UartHandle.Init.Mode = UART_MODE_TX_RX;
-  UartHandle.Init.OverSampling = UART_OVERSAMPLING_16;
-
-  if (HAL_UART_Init(&UartHandle) != HAL_OK) {
-    for (;;)
-      ;
-  }
-}
-
-void uart_write_char(char c) { HAL_UART_Transmit(&UartHandle, (uint8_t *) (&c), 1, 1000); }
-
-void uart_write_str(const char *str) { HAL_UART_Transmit(&UartHandle, (uint8_t *) str, strlen(str), 1000); }
+void init_uart() {}
 
 }  // namespace stm32
 
@@ -181,7 +136,7 @@ void arch_restart() {
   }
 }
 
-void arch_init() { ::esphome::stm32::init_uart(); }
+void arch_init() {}
 
 void IRAM_ATTR HOT arch_feed_wdt() {}
 
