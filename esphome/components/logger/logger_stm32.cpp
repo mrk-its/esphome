@@ -14,7 +14,7 @@ void Logger::pre_setup() {
   hw_uart_ = nullptr;
 }
 
-void Logger::set_hw_uart(esphome::uart::UARTComponent *uart) { hw_uart_ = uart; }
+void Logger::set_uart_parent(esphome::uart::UARTComponent *uart) { hw_uart_ = uart; }
 
 void HOT Logger::write_msg_(const char *msg) {
   if (hw_uart_) {

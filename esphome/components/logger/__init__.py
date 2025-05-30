@@ -3,6 +3,7 @@ import re
 from esphome import automation
 from esphome.automation import LambdaAction
 import esphome.codegen as cg
+from esphome.components import uart
 from esphome.components.esp32 import add_idf_sdkconfig_option, get_esp32_variant
 from esphome.components.esp32.const import (
     VARIANT_ESP32,
@@ -29,6 +30,7 @@ from esphome.const import (
     CONF_TAG,
     CONF_TRIGGER_ID,
     CONF_TX_BUFFER_SIZE,
+    CONF_UART_ID,
     PLATFORM_BK72XX,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
@@ -37,6 +39,8 @@ from esphome.const import (
     PLATFORM_STM32,
 )
 from esphome.core import CORE, Lambda, coroutine_with_priority
+
+DEPENDENCIES = ["uart"] if CORE.is_stm32 else []
 
 CODEOWNERS = ["@esphome/core"]
 logger_ns = cg.esphome_ns.namespace("logger")
@@ -102,8 +106,6 @@ ESP_ARDUINO_UNSUPPORTED_USB_UARTS = [USB_SERIAL_JTAG]
 
 UART_SELECTION_RP2040 = [USB_CDC, UART0, UART1]
 
-UART_SELECTION_STM32 = [UART2]
-
 HARDWARE_UART_TO_UART_SELECTION = {
     UART0: logger_ns.UART_SELECTION_UART0,
     UART0_SWAP: logger_ns.UART_SELECTION_UART0_SWAP,
@@ -147,8 +149,6 @@ def uart_selection(value):
         return cv.one_of(*UART_SELECTION_ESP8266, upper=True)(value)
     if CORE.is_rp2040:
         return cv.one_of(*UART_SELECTION_RP2040, upper=True)(value)
-    if CORE.is_stm32:
-        return cv.one_of(*UART_SELECTION_STM32, upper=True)(value)
     if CORE.is_libretiny:
         family = get_libretiny_family()
         if family in UART_SELECTION_LIBRETINY:
@@ -158,6 +158,8 @@ def uart_selection(value):
             return cv.one_of(*UART_SELECTION_LIBRETINY[component], upper=True)(value)
     if CORE.is_host:
         raise cv.Invalid("Uart selection not valid for host platform")
+    if CORE.is_stm32:
+        raise cv.Invalid("Uart selection is done via uart_id")
     raise NotImplementedError
 
 
@@ -182,6 +184,9 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(Logger),
+            cv.Optional(CONF_UART_ID): cv.All(
+                cv.only_on([PLATFORM_STM32]), cv.use_id(uart.UARTComponent)
+            ),
             cv.Optional(CONF_BAUD_RATE, default=115200): cv.positive_int,
             cv.Optional(CONF_TX_BUFFER_SIZE, default=512): cv.validate_bytes,
             cv.Optional(CONF_DEASSERT_RTS_DTR, default=False): cv.boolean,
@@ -199,7 +204,6 @@ CONFIG_SCHEMA = cv.All(
                 rp2040=USB_CDC,
                 bk72xx=DEFAULT,
                 rtl87xx=DEFAULT,
-                stm32=UART2,
             ): cv.All(
                 cv.only_on(
                     [
@@ -208,7 +212,6 @@ CONFIG_SCHEMA = cv.All(
                         PLATFORM_RP2040,
                         PLATFORM_BK72XX,
                         PLATFORM_RTL87XX,
-                        PLATFORM_STM32,
                     ]
                 ),
                 uart_selection,
@@ -319,6 +322,9 @@ async def to_code(config):
         cg.add_define("USE_LOGGER_USB_CDC")
     except cv.Invalid:
         pass
+
+    if CONF_UART_ID in config:
+        await uart.register_uart_device(log, config)
 
     # Register at end for safe mode
     await cg.register_component(log, config)

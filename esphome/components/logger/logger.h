@@ -107,7 +107,7 @@ class Logger : public Component {
 #endif
 
 #ifdef USE_STM32
-  void set_hw_uart(esphome::uart::UARTComponent *uart);
+  void set_uart_parent(esphome::uart::UARTComponent *uart);
 #endif
 
  protected:
