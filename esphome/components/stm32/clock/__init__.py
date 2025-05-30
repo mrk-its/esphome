@@ -8,7 +8,7 @@ from esphome.config_helpers import merge_config
 from esphome.const import CONF_BOARD
 
 from ..const import CONF_BOARD_FREQ, CONF_BOARD_SERIES, CONF_CLOCK
-from . import f1, f4, g0, g4, l4
+from . import f1, f4, g0, g4, l4, u5
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ SERIES_CLOCK_CONFIGS = {
     "L4": l4.CLOCK_CONFIG,
     "G0": g0.CLOCK_CONFIG,
     "G4": g4.CLOCK_CONFIG,
+    "U5": u5.CLOCK_CONFIG,
 }
 
 CLOCK_DEFAULTS = {
@@ -33,6 +34,7 @@ CLOCK_DEFAULTS = {
     **l4.CLOCK_DEFAULTS,
     **g0.CLOCK_DEFAULTS,
     **g4.CLOCK_DEFAULTS,
+    **u5.CLOCK_DEFAULTS,
 }
 
 
@@ -42,6 +44,9 @@ def _generate_clock_config(config):
             dedent("""
                 RCC_OscInitTypeDef RCC_OscInitStruct = {0};
                 RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+                #ifdef __HAL_RCC_PWR_CLK_ENABLE
+                __HAL_RCC_PWR_CLK_ENABLE();
+                #endif
             """)
         )
     )
@@ -121,18 +126,19 @@ def _generate_clock_config(config):
             """)
         )
     )
-    if "mul" in pll:
-        cg.add(cg.RawStatement(f"RCC_OscInitStruct.PLL.PLLMUL = {pll['mul']};"))
-    if "pllm" in pll:
-        cg.add(cg.RawStatement(f"RCC_OscInitStruct.PLL.PLLM = {pll['pllm']};"))
-    if "plln" in pll:
-        cg.add(cg.RawStatement(f"RCC_OscInitStruct.PLL.PLLN = {pll['plln']};"))
-    if "pllp" in pll:
-        cg.add(cg.RawStatement(f"RCC_OscInitStruct.PLL.PLLP = {pll['pllp']};"))
-    if "pllq" in pll:
-        cg.add(cg.RawStatement(f"RCC_OscInitStruct.PLL.PLLQ = {pll['pllq']};"))
-    if "pllr" in pll:
-        cg.add(cg.RawStatement(f"RCC_OscInitStruct.PLL.PLLR = {pll['pllr']};"))
+    for field, key in (
+        ("PLLMUL", "mul"),
+        ("PLLM", "pllm"),
+        ("PLLN", "plln"),
+        ("PLLP", "pllp"),
+        ("PLLQ", "pllq"),
+        ("PLLR", "pllr"),
+        ("PLLRGE", "pllrge"),
+        ("PLLMBOOST", "pllmboost"),
+    ):
+        if key not in pll:
+            continue
+        cg.add(cg.RawStatement(f"RCC_OscInitStruct.PLL.{field} = {pll[key]};"))
 
     cg.add(
         cg.RawStatement(
@@ -146,7 +152,7 @@ def _generate_clock_config(config):
     clock = config["clock"]["clock"]
 
     clock_types = []
-    for clk_name in ("sysclk", "hclk", "pclk1", "pclk2"):
+    for clk_name in ("sysclk", "hclk", "pclk1", "pclk2", "pclk3"):
         if clk_name in clock:
             clock_types.append(f"RCC_CLOCKTYPE_{clk_name.upper()}")
 
@@ -156,23 +162,18 @@ def _generate_clock_config(config):
                 f"""RCC_ClkInitStruct.ClockType = {" | ".join(clock_types)};"""
             )
         )
-    cg.add(
-        cg.RawStatement(
-            dedent(f"""
-                RCC_ClkInitStruct.SYSCLKSource = {clock["sys_clk_source"]};
-                RCC_ClkInitStruct.AHBCLKDivider = {clock["ahb_clk_divider"]};
-                RCC_ClkInitStruct.APB1CLKDivider = {clock["apb1_clk_divider"]};
-            """)
-        )
-    )
-    if "apb2_clk_divider" in clock:
-        cg.add(
-            cg.RawStatement(
-                dedent(f"""
-                    RCC_ClkInitStruct.APB2CLKDivider = {clock["apb2_clk_divider"]};
-                """)
-            )
-        )
+
+    for field, key in (
+        ("SYSCLKSource", "sys_clk_source"),
+        ("AHBCLKDivider", "ahb_clk_divider"),
+        ("APB1CLKDivider", "apb1_clk_divider"),
+        ("APB2CLKDivider", "apb2_clk_divider"),
+        ("APB3CLKDivider", "apb3_clk_divider"),
+    ):
+        if key not in clock:
+            continue
+        cg.add(cg.RawStatement(f"RCC_ClkInitStruct.{field} = {clock[key]};"))
+
     cg.add(
         cg.RawStatement(
             dedent(f"""
@@ -190,6 +191,7 @@ CONFIG_GENERATORS = {
     "L4": _generate_clock_config,
     "G4": _generate_clock_config,
     "G0": _generate_clock_config,
+    "U5": _generate_clock_config,
 }
 
 
