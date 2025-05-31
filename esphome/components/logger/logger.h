@@ -23,14 +23,14 @@
 #endif  // USE_ESP_IDF
 
 #ifdef USE_STM32
-#include "esphome/components/uart/uart_component.h"
+#include "esphome/components/uart/uart_component_stm32.h"
 #endif
 
 namespace esphome {
 
 namespace logger {
 
-#if defined(USE_ESP32) || defined(USE_ESP8266) || defined(USE_RP2040) || defined(USE_LIBRETINY) || defined(USE_STM32)
+#if defined(USE_ESP32) || defined(USE_ESP8266) || defined(USE_RP2040) || defined(USE_LIBRETINY)
 /** Enum for logging UART selection
  *
  * Advanced configuration (pin selection, etc) is not supported.
@@ -73,7 +73,7 @@ class Logger : public Component {
 #ifdef USE_ESP_IDF
   uart_port_t get_uart_num() const { return uart_num_; }
 #endif
-#if defined(USE_ESP32) || defined(USE_ESP8266) || defined(USE_RP2040) || defined(USE_LIBRETINY) || defined(USE_STM32)
+#if defined(USE_ESP32) || defined(USE_ESP8266) || defined(USE_RP2040) || defined(USE_LIBRETINY)
   void set_uart_selection(UARTSelection uart_selection) { uart_ = uart_selection; }
   /// Get the UART used by the logger.
   UARTSelection get_uart() const;
@@ -166,7 +166,6 @@ class Logger : public Component {
   UARTSelection uart_{UART_SELECTION_UART0};
 #endif
 #ifdef USE_STM32
-  UARTSelection uart_{UART_SELECTION_UART2};
   esphome::uart::UARTComponent *hw_uart_;
 #endif
 #ifdef USE_LIBRETINY

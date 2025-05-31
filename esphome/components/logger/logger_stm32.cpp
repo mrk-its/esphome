@@ -23,10 +23,6 @@ void HOT Logger::write_msg_(const char *msg) {
   }
 }
 
-const char *const UART_SELECTIONS[] = {"UART2"};
-
-const char *Logger::get_uart_selection_() { return UART_SELECTIONS[0]; }
-
 }  // namespace logger
 }  // namespace esphome
 #endif  // USE_STM32

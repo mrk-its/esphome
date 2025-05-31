@@ -16,34 +16,11 @@ namespace uart {
 static const char *const TAG = "uart.stm32";
 
 void STM32UARTComponent::setup() {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if (tx_pin_ != nullptr) {
+  if (tx_pin_) {
     tx_pin_->setup();
-    auto pin = tx_pin_->get_pin();
-    auto port = esphome::stm32::pin_to_port(pin);
-    GPIO_InitStruct.Pin = esphome::stm32::pin_to_mask(pin);
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    auto af = ((stm32::STM32GPIOPin *) tx_pin_)->get_af();
-    if (af) {
-      GPIO_InitStruct.Alternate = *af;
-    }
-    HAL_GPIO_Init(port, &GPIO_InitStruct);
   }
-  if (rx_pin_ != nullptr) {
+  if (rx_pin_) {
     rx_pin_->setup();
-    auto pin = rx_pin_->get_pin();
-    auto port = esphome::stm32::pin_to_port(pin);
-    GPIO_InitStruct.Pin = esphome::stm32::pin_to_mask(pin);
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    auto af = ((stm32::STM32GPIOPin *) rx_pin_)->get_af();
-    if (af) {
-      GPIO_InitStruct.Alternate = *af;
-    }
-    HAL_GPIO_Init(port, &GPIO_InitStruct);
   }
   if (clock_initializer_) {
     clock_initializer_();
@@ -55,9 +32,45 @@ void STM32UARTComponent::setup() {
   HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
 
   uart_handle_.Init.BaudRate = baud_rate_;
-  uart_handle_.Init.WordLength = UART_WORDLENGTH_8B;
-  uart_handle_.Init.StopBits = UART_STOPBITS_1;
-  uart_handle_.Init.Parity = UART_PARITY_NONE;
+  switch (data_bits_) {
+    case 7:
+      uart_handle_.Init.WordLength = UART_WORDLENGTH_7B;
+      break;
+    case 9:
+      uart_handle_.Init.WordLength = UART_WORDLENGTH_9B;
+      break;
+    default:
+      uart_handle_.Init.WordLength = UART_WORDLENGTH_8B;
+      break;
+  }
+  switch (stop_bits_) {
+#ifdef UART_STOPBITS_0_5
+    case 5:
+      uart_handle_.Init.StopBits = UART_STOPBITS_0_5;
+      break;
+#endif
+#ifdef UART_STOPBITS_1_5
+    case 15:
+      uart_handle_.Init.StopBits = UART_STOPBITS_1_5;
+      break;
+#endif
+    case 2:
+      uart_handle_.Init.StopBits = UART_STOPBITS_2;
+    default:
+      uart_handle_.Init.StopBits = UART_STOPBITS_1;
+      break;
+  }
+  switch (parity_) {
+    case UARTParityOptions::UART_CONFIG_PARITY_EVEN:
+      uart_handle_.Init.Parity = UART_PARITY_EVEN;
+      break;
+    case UARTParityOptions::UART_CONFIG_PARITY_ODD:
+      uart_handle_.Init.Parity = UART_PARITY_ODD;
+      break;
+    default:
+      uart_handle_.Init.Parity = UART_PARITY_NONE;
+      break;
+  }
   uart_handle_.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   uart_handle_.Init.Mode = UART_MODE_TX_RX;
   uart_handle_.Init.OverSampling = UART_OVERSAMPLING_16;
@@ -68,7 +81,7 @@ void STM32UARTComponent::setup() {
 }
 
 void STM32UARTComponent::dump_config() {
-  // ESP_LOGCONFIG(TAG, "UART Bus %u:", this->uart_num_);
+  ESP_LOGCONFIG(TAG, "UART Instance: %s:", this->name_.c_str());
   LOG_PIN("  TX Pin: ", tx_pin_);
   LOG_PIN("  RX Pin: ", rx_pin_);
   ESP_LOGCONFIG(TAG, "  Baud Rate: %" PRIu32 " baud", this->baud_rate_);

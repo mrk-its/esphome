@@ -68,7 +68,7 @@ void STM32GPIOPin::attach_interrupt(void (*func)(void *), void *arg, gpio::Inter
 
 static uint16_t initialized_ports = 0;
 
-void _pin_mode(uint8_t pin, gpio::Flags flags) {
+void _pin_mode(uint8_t pin, gpio::Flags flags, optional<uint8_t> af) {
   uint16_t port_index = pin >> 4;
   uint16_t port_mask = 1 << port_index;
   if (!(initialized_ports & port_mask)) {
@@ -127,11 +127,18 @@ void _pin_mode(uint8_t pin, gpio::Flags flags) {
   if (flags & gpio::Flags::FLAG_INPUT) {
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   } else {
-    GPIO_InitStruct.Mode = (flags & gpio::Flags::FLAG_OPEN_DRAIN) ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT_PP;
+    if (!af) {
+      GPIO_InitStruct.Mode = flags & gpio::Flags::FLAG_OPEN_DRAIN ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT_PP;
+    } else {
+      GPIO_InitStruct.Mode = flags & gpio::Flags::FLAG_OPEN_DRAIN ? GPIO_MODE_AF_OD : GPIO_MODE_AF_PP;
+    }
   }
   GPIO_InitStruct.Pull = (flags & gpio::Flags::FLAG_PULLUP)
                              ? GPIO_PULLUP
                              : ((flags & gpio::Flags::FLAG_PULLDOWN) ? GPIO_PULLDOWN : GPIO_NOPULL);
+  if (af) {
+    GPIO_InitStruct.Alternate = *af;
+  }
 
 #ifdef GPIO_SPEED_HIGH
   GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
@@ -153,7 +160,7 @@ void _digital_write(uint8_t pin, bool value) {
     HAL_GPIO_WritePin(port, pin_to_mask(pin), value ? GPIO_PIN_SET : GPIO_PIN_RESET);
   }
 }
-void STM32GPIOPin::pin_mode(gpio::Flags flags) { _pin_mode(pin_, flags); }
+void STM32GPIOPin::pin_mode(gpio::Flags flags) { _pin_mode(pin_, flags, af_); }
 
 void STM32GPIOPin::digital_write(bool value) { _digital_write(pin_, value != inverted_); }
 
@@ -175,7 +182,8 @@ using namespace stm32;
 
 void IRAM_ATTR ISRInternalGPIOPin::pin_mode(gpio::Flags flags) {
   auto pin_ = ((struct ISRPinArg *) arg_)->pin;
-  _pin_mode(pin_, flags);
+  // TODO - passing false for af
+  _pin_mode(pin_, flags, false);
 }
 
 bool IRAM_ATTR ISRInternalGPIOPin::digital_read() {

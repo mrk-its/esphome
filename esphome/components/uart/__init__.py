@@ -327,9 +327,8 @@ async def to_code(config):
         rx_pin = await cg.gpio_pin_expression(config[CONF_RX_PIN])
         cg.add(var.set_rx_pin(rx_pin))
     if CONF_PORT in config:
-        if CORE.is_host:
-            cg.add(var.set_name(config[CONF_PORT]))
-        else:
+        cg.add(var.set_name(config[CONF_PORT]))
+        if CORE.is_stm32:
             port = config[CONF_PORT]
             cg.add(var.set_instance(cg.RawExpression(port)))
             cg.add(

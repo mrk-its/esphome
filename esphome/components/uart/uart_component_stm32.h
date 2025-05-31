@@ -41,9 +41,12 @@ class STM32UARTComponent : public UARTComponent, public Component {
 
   void set_instance(USART_TypeDef *instance) { uart_handle_.Instance = instance; }
   void set_clock_initializer(void (*clock_initializer)(void)) { clock_initializer_ = clock_initializer; }
+  void set_name(const char *name) { name_ = name; }
+  const char *get_name() { return name_.c_str(); }
 
  protected:
   UART_HandleTypeDef uart_handle_;
+  std::string name_;
   void (*clock_initializer_)(void);
   void check_logger_conflict() override;
 

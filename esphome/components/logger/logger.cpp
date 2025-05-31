@@ -177,11 +177,13 @@ void Logger::dump_config() {
   ESP_LOGCONFIG(TAG, "Logger:");
   ESP_LOGCONFIG(TAG, "  Max Level: %s", LOG_LEVELS[ESPHOME_LOG_LEVEL]);
   ESP_LOGCONFIG(TAG, "  Initial Level: %s", LOG_LEVELS[this->current_level_]);
-#ifndef USE_HOST
+#if !defined(USE_HOST) && !defined(USE_STM32)
   ESP_LOGCONFIG(TAG, "  Log Baud Rate: %" PRIu32, this->baud_rate_);
   ESP_LOGCONFIG(TAG, "  Hardware UART: %s", get_uart_selection_());
 #endif
-
+#if defined(USE_STM32)
+  ESP_LOGCONFIG(TAG, "  Hardware UART: %s", ((uart::STM32UARTComponent *) hw_uart_)->get_name());
+#endif
   for (auto &it : this->log_levels_) {
     ESP_LOGCONFIG(TAG, "  Level for '%s': %s", it.first.c_str(), LOG_LEVELS[it.second]);
   }
