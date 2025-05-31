@@ -15,6 +15,7 @@ from esphome.const import (
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
     PLATFORM_RP2040,
+    PLATFORM_STM32,
 )
 from esphome.core import CORE, coroutine_with_priority
 import esphome.final_validate as fv
@@ -25,6 +26,7 @@ I2CBus = i2c_ns.class_("I2CBus")
 ArduinoI2CBus = i2c_ns.class_("ArduinoI2CBus", I2CBus, cg.Component)
 IDFI2CBus = i2c_ns.class_("IDFI2CBus", I2CBus, cg.Component)
 I2CDevice = i2c_ns.class_("I2CDevice")
+STM32I2CBus = i2c_ns.class_("STM32I2CBus", I2CBus, cg.Component)
 
 
 CONF_SDA_PULLUP_ENABLED = "sda_pullup_enabled"
@@ -37,6 +39,8 @@ def _bus_declare_type(value):
         return cv.declare_id(ArduinoI2CBus)(value)
     if CORE.using_esp_idf:
         return cv.declare_id(IDFI2CBus)(value)
+    if CORE.is_stm32:
+        return cv.declare_id(STM32I2CBus)(value)
     raise NotImplementedError
 
 
@@ -64,7 +68,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_SCAN, default=True): cv.boolean,
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040]),
+    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040, PLATFORM_STM32]),
 )
 
 
