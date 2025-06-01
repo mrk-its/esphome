@@ -8,12 +8,37 @@ static const char *const TAG = "i2c.stm32";
 
 void STM32I2CBus::setup() {
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_SYSCLK;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
-    Error_Handler();
-  }
 
+#ifdef I2C1
+  if (i2c_handle_.Init.Instance == I2C1) {
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+      Error_Handler();
+    }
+    __HAL_RCC_I2C1_CLK_ENABLE();
+  }
+#endif
+#ifdef I2C2
+  if (i2c_handle_.Init.Instance == I2C2) {
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C2;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+      Error_Handler();
+    }
+    __HAL_RCC_I2C2_CLK_ENABLE();
+  }
+#endif
+#ifdef I2C3
+  if (i2c_handle_.Init.Instance == I2C3) {
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C3;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+      Error_Handler();
+    }
+    __HAL_RCC_I2C3_CLK_ENABLE();
+  }
+#endif
+
+  // TODO: determine af based on instance / pins?
   sda_pin_.set_af(4);
   scl_pin_.set_af(4);
   scl_pin_.set_flags(gpio::Flags::FLAG_OPEN_DRAIN);
@@ -22,30 +47,27 @@ void STM32I2CBus::setup() {
   sda_pin_.setup();
   scl_pin_.setup();
 
-  __HAL_RCC_I2C1_CLK_ENABLE();
-
-  hi2c1_.Instance = I2C1;
-  hi2c1_.Init.Timing = 0x30909DEC;
-  hi2c1_.Init.OwnAddress1 = 0;
-  hi2c1_.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1_.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1_.Init.OwnAddress2 = 0;
-  hi2c1_.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c1_.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1_.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1_) != HAL_OK) {
+  i2c_handle_.Init.Timing = 0x30909DEC;
+  i2c_handle_.Init.OwnAddress1 = 0;
+  i2c_handle_.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  i2c_handle_.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  i2c_handle_.Init.OwnAddress2 = 0;
+  i2c_handle_.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  i2c_handle_.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  i2c_handle_.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&i2c_handle_) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure Analogue filter
    */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1_, I2C_ANALOGFILTER_ENABLE) != HAL_OK) {
+  if (HAL_I2CEx_ConfigAnalogFilter(&i2c_handle_, I2C_ANALOGFILTER_ENABLE) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure Digital filter
    */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1_, 0) != HAL_OK) {
+  if (HAL_I2CEx_ConfigDigitalFilter(&i2c_handle_, 0) != HAL_OK) {
     Error_Handler();
   }
   if (this->scan_) {
@@ -58,7 +80,8 @@ void STM32I2CBus::setup() {
 
 ErrorCode STM32I2CBus::readv(uint8_t address, ReadBuffer *buffers, size_t cnt) {
   if (cnt <= 1) {
-    if (HAL_I2C_Master_Receive(&hi2c1_, address, cnt ? buffers->data : nullptr, cnt ? buffers->len : 0, 20) == HAL_OK) {
+    if (HAL_I2C_Master_Receive(&i2c_handle_, address, cnt ? buffers->data : nullptr, cnt ? buffers->len : 0, 20) ==
+        HAL_OK) {
       return ERROR_OK;
     }
     return ERROR_NOT_ACKNOWLEDGED;
@@ -73,7 +96,7 @@ ErrorCode STM32I2CBus::readv(uint8_t address, ReadBuffer *buffers, size_t cnt) {
     ESP_LOGE(TAG, "read buffer overflow");
     return ERROR_UNKNOWN;
   }
-  if (HAL_I2C_Master_Receive(&hi2c1_, address, buffer, len, 20) == HAL_OK) {
+  if (HAL_I2C_Master_Receive(&i2c_handle_, address, buffer, len, 20) == HAL_OK) {
     uint8_t *ptr = buffer;
     for (size_t i = 0; i < cnt; i++) {
       memcpy(buffers[i].data, ptr, buffers[i].len);
@@ -86,8 +109,8 @@ ErrorCode STM32I2CBus::readv(uint8_t address, ReadBuffer *buffers, size_t cnt) {
 
 ErrorCode STM32I2CBus::writev(uint8_t address, WriteBuffer *buffers, size_t cnt, bool stop) {
   if (cnt <= 1) {
-    if (HAL_I2C_Master_Transmit(&hi2c1_, address, (uint8_t *) (cnt ? buffers->data : nullptr), cnt ? buffers->len : 0,
-                                20) == HAL_OK) {
+    if (HAL_I2C_Master_Transmit(&i2c_handle_, address, (uint8_t *) (cnt ? buffers->data : nullptr),
+                                cnt ? buffers->len : 0, 20) == HAL_OK) {
       return ERROR_OK;
     }
     return ERROR_NOT_ACKNOWLEDGED;
@@ -104,7 +127,7 @@ ErrorCode STM32I2CBus::writev(uint8_t address, WriteBuffer *buffers, size_t cnt,
     buffers++;
     cnt--;
   }
-  if (HAL_I2C_Master_Transmit(&hi2c1_, address, buffer, len, 20) == HAL_OK) {
+  if (HAL_I2C_Master_Transmit(&i2c_handle_, address, buffer, len, 20) == HAL_OK) {
     return ERROR_OK;
   }
   return ERROR_NOT_ACKNOWLEDGED;

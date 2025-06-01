@@ -18,7 +18,7 @@ enum RecoveryCode {
 
 class STM32I2CBus : public I2CBus, public Component {
  public:
-  STM32I2CBus() : hi2c1_{0} {}
+  STM32I2CBus() : i2c_handle_{0} {}
   void setup() override;
   void dump_config() override;
   ErrorCode readv(uint8_t address, ReadBuffer *buffers, size_t cnt) override;
@@ -30,13 +30,14 @@ class STM32I2CBus : public I2CBus, public Component {
   void set_scl_pin(uint8_t scl_pin) { scl_pin_.set_pin(scl_pin); }
   void set_frequency(uint32_t frequency) {}
   void set_timeout(uint32_t timeout) { timeout_ = timeout; }
+  void set_instance(I2C_TypeDef *instance) { i2c_handle_.Instance = instance; }
 
  private:
   void recover_();
   RecoveryCode recovery_result_;
 
  protected:
-  I2C_HandleTypeDef hi2c1_;
+  I2C_HandleTypeDef i2c_handle_;
   stm32::STM32GPIOPin sda_pin_;
   stm32::STM32GPIOPin scl_pin_;
   uint32_t timeout_ = 0;

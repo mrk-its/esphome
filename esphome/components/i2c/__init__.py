@@ -7,6 +7,7 @@ from esphome.const import (
     CONF_I2C_ID,
     CONF_ID,
     CONF_INPUT,
+    CONF_INSTANCE,
     CONF_OUTPUT,
     CONF_SCAN,
     CONF_SCL,
@@ -48,6 +49,14 @@ pin_with_input_and_output_support = pins.internal_gpio_pin_number(
     {CONF_OUTPUT: True, CONF_INPUT: True}
 )
 
+I2C_INSTANCES = ("I2C1", "I2C2", "I2C3")
+
+
+def i2c_instance(value):
+    if value not in I2C_INSTANCES:
+        raise cv.Invalid(f"invalid I2C instance, must be one of {I2C_INSTANCES}")
+    return cv.string(value)
+
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
@@ -58,6 +67,9 @@ CONFIG_SCHEMA = cv.All(
                 cv.only_with_esp_idf, cv.boolean
             ),
             cv.Optional(CONF_SCL, default="SCL"): pin_with_input_and_output_support,
+            cv.Optional(CONF_INSTANCE): cv.All(
+                cv.only_on([PLATFORM_STM32]), i2c_instance
+            ),
             cv.SplitDefault(CONF_SCL_PULLUP_ENABLED, esp32_idf=True): cv.All(
                 cv.only_with_esp_idf, cv.boolean
             ),
@@ -84,7 +96,8 @@ async def to_code(config):
     cg.add(var.set_scl_pin(config[CONF_SCL]))
     if CONF_SCL_PULLUP_ENABLED in config:
         cg.add(var.set_scl_pullup_enabled(config[CONF_SCL_PULLUP_ENABLED]))
-
+    if CONF_INSTANCE in config:
+        cg.add(var.set_instance(cg.RawExpression(config[CONF_INSTANCE])))
     cg.add(var.set_frequency(int(config[CONF_FREQUENCY])))
     cg.add(var.set_scan(config[CONF_SCAN]))
     if CONF_TIMEOUT in config:
