@@ -8,10 +8,10 @@ static const char *const TAG = "i2c.stm32";
 
 void STM32I2CBus::setup() {
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
-  PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_SYSCLK;
 
 #ifdef I2C1
-  if (i2c_handle_.Init.Instance == I2C1) {
+  if (i2c_handle_.Instance == I2C1) {
+    PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_SYSCLK;
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
       Error_Handler();
@@ -20,7 +20,8 @@ void STM32I2CBus::setup() {
   }
 #endif
 #ifdef I2C2
-  if (i2c_handle_.Init.Instance == I2C2) {
+  if (i2c_handle_.Instance == I2C2) {
+    PeriphClkInit.I2c1ClockSelection = RCC_I2C2CLKSOURCE_SYSCLK;
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C2;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
       Error_Handler();
@@ -29,7 +30,8 @@ void STM32I2CBus::setup() {
   }
 #endif
 #ifdef I2C3
-  if (i2c_handle_.Init.Instance == I2C3) {
+  if (i2c_handle_.Instance == I2C3) {
+    PeriphClkInit.I2c1ClockSelection = RCC_I2C3CLKSOURCE_SYSCLK;
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C3;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
       Error_Handler();
@@ -47,7 +49,10 @@ void STM32I2CBus::setup() {
   sda_pin_.setup();
   scl_pin_.setup();
 
+  // TODO
+  // following timing sets ~100kHz SCL on STM32U5 160Mhz sysclk
   i2c_handle_.Init.Timing = 0x30909DEC;
+
   i2c_handle_.Init.OwnAddress1 = 0;
   i2c_handle_.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   i2c_handle_.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
