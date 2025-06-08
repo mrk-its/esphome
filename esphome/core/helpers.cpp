@@ -667,6 +667,10 @@ IRAM_ATTR InterruptLock::~InterruptLock() { portENABLE_INTERRUPTS(); }
 #elif defined(USE_RP2040)
 IRAM_ATTR InterruptLock::InterruptLock() { state_ = save_and_disable_interrupts(); }
 IRAM_ATTR InterruptLock::~InterruptLock() { restore_interrupts(state_); }
+#elif defined(USE_STM32)
+IRAM_ATTR InterruptLock::InterruptLock() {}
+IRAM_ATTR InterruptLock::~InterruptLock() {}
+
 #endif
 
 uint8_t HighFrequencyLoopRequester::num_requests = 0;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
