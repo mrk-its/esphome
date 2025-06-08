@@ -2,8 +2,6 @@
 #include "logger.h"
 #include "esphome/core/log.h"
 
-extern void uart_write_str(const char *str);
-
 namespace esphome {
 namespace logger {
 
