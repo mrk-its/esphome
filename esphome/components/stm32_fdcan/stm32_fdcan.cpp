@@ -43,44 +43,37 @@ bool STM32FDCan::setup_internal() {
   hcan.Init.AutoRetransmission = DISABLE;
   hcan.Init.TransmitPause = DISABLE;
   hcan.Init.ProtocolException = DISABLE;
-  hcan.Init.NominalPrescaler = 16;
-  hcan.Init.NominalSyncJumpWidth = 1;
-  hcan.Init.NominalTimeSeg1 = 30;
-  hcan.Init.NominalTimeSeg2 = 9;
-  hcan.Init.DataPrescaler = 16;
-  hcan.Init.DataSyncJumpWidth = 1;
-  hcan.Init.DataTimeSeg1 = 30;
-  hcan.Init.DataTimeSeg2 = 9;
-  hcan.Init.StdFiltersNbr = 1;
+  hcan.Init.StdFiltersNbr = 0;
   hcan.Init.ExtFiltersNbr = 0;
   hcan.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
 
-  // uint32_t bitrate = CAN_BITRATES[bit_rate_];
-  // uint32_t pclk1_freq = HAL_RCC_GetSYSCLKFreq();
+  // TODO - determine PLL1_FREQ runtime, from clock config
+  const uint32_t PLL1_FREQ = 80000000;
+  uint32_t bitrate = CAN_BITRATES[bit_rate_];
 
-  // if (pclk1_freq % bitrate) {
-  //   ESP_LOGE(TAG, "PCLK1 frequency (%lu Hz) must be a multiply of requested bitrate (%lu bps)", pclk1_freq, bitrate);
-  //   return false;
-  // }
-  // uint32_t prescaller_tq = pclk1_freq / bitrate;
-  // if (!(prescaller_tq % 16)) {
-  //   hcan.Init.NominalPrescaler = prescaller_tq / 16;
-  //   hcan.Init.NominalTimeSeg1 = CAN_BS1_13TQ;
-  //   hcan.Init.NominalTimeSeg2 = CAN_BS2_2TQ;
-  // } else if (!(prescaller_tq % 8)) {
-  //   hcan.Init.NominalPrescaler = prescaller_tq / 8;
-  //   hcan.Init.NominalTimeSeg1 = CAN_BS1_6TQ;
-  //   hcan.Init.NominalTimeSeg2 = CAN_BS2_1TQ;
-  // } else if (!(prescaller_tq % 4)) {
-  //   hcan.Init.NominalPrescaler = prescaller_tq / 4;
-  //   hcan.Init.NominalTimeSeg1 = CAN_BS1_2TQ;
-  //   hcan.Init.NominalTimeSeg2 = CAN_BS2_1TQ;
-  // } else {
-  //   ESP_LOGE(TAG, "cannot setup CAN timings for PCLK1 frequency: %lu Hz and bitrate: %lu bps", pclk1_freq, bitrate);
-  //   return false;
-  // }
-  // ESP_LOGCONFIG(TAG, "prescaller: %lu, tseg1: %lx, tseg2: %lx", hcan.Init.Prescaler, hcan.Init.TimeSeg1,
-  //               hcan.Init.TimeSeg2);
+  for (uint32_t prescaller = 1; prescaller <= 512; prescaller++) {
+    if ((PLL1_FREQ % (bitrate * prescaller)) == 0) {
+      uint32_t ticks_per_bit = PLL1_FREQ / prescaller / bitrate;
+      uint32_t tseg1 = ticks_per_bit * 3 / 4;
+      uint32_t tseg2 = ticks_per_bit - tseg1 - 1;
+      if (tseg1 >= 2 && tseg1 < 256 && tseg2 >= 2 && tseg2 <= 128) {
+        ESP_LOGCONFIG(TAG, "prescaller: %lu, tseg1: %lu, tseg2: %lu", prescaller, tseg1, tseg2);
+        hcan.Init.NominalPrescaler = prescaller;  // 1..512
+        hcan.Init.NominalSyncJumpWidth = 1;       // 1..128
+        hcan.Init.NominalTimeSeg1 = tseg1;        // 2..256
+        hcan.Init.NominalTimeSeg2 = tseg2;        // 2..128
+        break;
+      } else {
+        ESP_LOGV(TAG, "prescaller: %lu, tseg1: %lu, tseg2: %lu - out of range", prescaller, tseg1, tseg2);
+      }
+    }
+  }
+
+  if (!hcan.Init.NominalPrescaler) {
+    ESP_LOGE(TAG, "cannot compute timings for %ld pll1 freq and %ld bitrate", PLL1_FREQ, bitrate);
+    this->mark_failed();
+    return false;
+  }
 
   // RCC_OscInitTypeDef osc_config;
 
@@ -89,8 +82,6 @@ bool STM32FDCan::setup_internal() {
 
   if (HAL_FDCAN_Init(&hcan) == HAL_OK) {
     // TODO: make sure ErrorCode is 0 and State is READY
-
-    ESP_LOGI(TAG, "can memory size: %d", hcan.msgRam.TxFIFOQSA - hcan.msgRam.StandardFilterSA + 3 * (18U * 4U));
 
     ESP_LOGI(TAG, "FDCAN: Initialized, state: %d, err: %lu", hcan.State, hcan.ErrorCode);
 
@@ -101,17 +92,17 @@ bool STM32FDCan::setup_internal() {
       ESP_LOGI(TAG, "global filter configured");
     }
 
-    FDCAN_FilterTypeDef fconfig = {0};
-    fconfig.IdType = FDCAN_STANDARD_ID;
-    fconfig.FilterIndex = 0;
-    fconfig.FilterType = FDCAN_FILTER_MASK;
-    fconfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-    fconfig.FilterID1 = 0x0;
-    fconfig.FilterID2 = 0x0;
+    // FDCAN_FilterTypeDef fconfig = {0};
+    // fconfig.IdType = FDCAN_STANDARD_ID;
+    // fconfig.FilterIndex = 0;
+    // fconfig.FilterType = FDCAN_FILTER_MASK;
+    // fconfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+    // fconfig.FilterID1 = 0x0;
+    // fconfig.FilterID2 = 0x0;
 
-    if (HAL_FDCAN_ConfigFilter(&hcan, &fconfig) == HAL_OK) {
-      ESP_LOGI(TAG, "filter configured");
-    }
+    // if (HAL_FDCAN_ConfigFilter(&hcan, &fconfig) == HAL_OK) {
+    //   ESP_LOGI(TAG, "filter configured");
+    // }
 
     if (HAL_FDCAN_Start(&hcan) == HAL_OK) {
       ESP_LOGI(TAG, "FDCAN: Started");
@@ -143,6 +134,8 @@ bool STM32FDCan::setup_internal() {
 static uint32_t last_millis = 0;
 
 void STM32FDCan::loop() {
+  canbus::Canbus::loop();
+  return;
   uint32_t t = millis();
   if (t - last_millis < 1000) {
     return;
@@ -155,11 +148,12 @@ void STM32FDCan::loop() {
   HAL_FDCAN_GetErrorCounters(&hcan, &cnts);
   HAL_FDCAN_GetProtocolStatus(&hcan, &status);
 
-  ESP_LOGV(TAG,
-           "rx fill[0: %d, 1: %d], errors[tx: %d, rx: %d, rx_passive: %d, cnt: %d], activity: %x, err_passive: %d, "
-           "warn: %d, bus_off: %d, last_err: %d",
-           fill_rx0, fill_rx1, cnts.TxErrorCnt, cnts.RxErrorCnt, cnts.RxErrorPassive, cnts.ErrorLogging,
-           status.Activity, status.ErrorPassive, status.Warning, status.BusOff, status.LastErrorCode);
+  ESP_LOGV(
+      TAG,
+      "rx fill[0: %lu, 1: %lu], errors[tx: %lu, rx: %lu, rx_passive: %lu, cnt: %lu], activity: %lx, err_passive: %ld, "
+      "warn: %lu, bus_off: %lu, last_err: %lu",
+      fill_rx0, fill_rx1, cnts.TxErrorCnt, cnts.RxErrorCnt, cnts.RxErrorPassive, cnts.ErrorLogging, status.Activity,
+      status.ErrorPassive, status.Warning, status.BusOff, status.LastErrorCode);
 }
 
 canbus::Error STM32FDCan::send_message(struct canbus::CanFrame *frame) {
@@ -192,31 +186,24 @@ canbus::Error STM32FDCan::send_message(struct canbus::CanFrame *frame) {
 };
 
 canbus::Error STM32FDCan::read_message(struct canbus::CanFrame *frame) {
-#if !defined(FDCAN1)
-  auto fifo0_cnt = HAL_CAN_GetRxFifoFillLevel(&hcan, 0);
-  auto fifo1_cnt = HAL_CAN_GetRxFifoFillLevel(&hcan, 1);
-  if (fifo1_cnt) {
+  uint32_t fill_rx0 = HAL_FDCAN_GetRxFifoFillLevel(&hcan, FDCAN_RX_FIFO0);
+  uint32_t fill_rx1 = HAL_FDCAN_GetRxFifoFillLevel(&hcan, FDCAN_RX_FIFO1);
+  if (fill_rx1) {
     ESP_LOGE(TAG, "not expected message in fifo #1");
   }
-
-  CAN_RxHeaderTypeDef header;
-
-  if (fifo0_cnt && (HAL_CAN_GetRxMessage(&hcan, 0, &header, frame->data) == HAL_OK)) {
-    frame->can_id = header.StdId;
-    frame->use_extended_id = (header.IDE == CAN_ID_EXT);
-    frame->remote_transmission_request = (header.RTR == CAN_RTR_REMOTE);
-    frame->can_data_length_code = header.DLC;
-    ESP_LOGV(TAG, "fifo #0, received msg from %d, dlc: %d", header.StdId, header.DLC);
-    return canbus::ERROR_OK;
+  FDCAN_RxHeaderTypeDef header;
+  if (fill_rx0) {
+    if (HAL_FDCAN_GetRxMessage(&hcan, FDCAN_RX_FIFO0, &header, frame->data) == HAL_OK) {
+      frame->can_id = header.Identifier;
+      frame->use_extended_id = (header.IdType == FDCAN_EXTENDED_ID);
+      frame->remote_transmission_request = (header.RxFrameType == FDCAN_REMOTE_FRAME);
+      frame->can_data_length_code = header.DataLength;
+      ESP_LOGV(TAG, "fifo #0, received msg from %lu, dlc: %d", frame->can_id, frame->can_data_length_code);
+      return canbus::ERROR_OK;
+    } else {
+      return canbus::ERROR_FAIL;
+    }
   }
-
-  uint32_t err = HAL_CAN_GetError(&hcan);
-  if (err) {
-    ESP_LOGD(TAG, "err: %ld", err);
-  }
-#else
-#warning TODO - add FDCAN support
-#endif
   return canbus::ERROR_NOMSG;
 };
 
