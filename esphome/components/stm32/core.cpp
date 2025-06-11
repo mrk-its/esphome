@@ -62,6 +62,7 @@ void log_clock_config() {
 
   ESP_LOGI(TAG, "--- Clock Configuration ---");
   ESP_LOGI(TAG, "System Clock Frequency (SYSCLK): %lu Hz (max: %lu Hz)", sysClockFreq, F_CPU);
+  ESP_LOGI(TAG, "HSE Frequency: %lu Hz", HSE_VALUE);
   ESP_LOGI(TAG, "HCLK Frequency (AHB Bus): %lu Hz", hclkFreq);
 #ifdef HAL_RCC_GetPCLK1Freq
   uint32_t pclk1Freq = HAL_RCC_GetPCLK1Freq();
