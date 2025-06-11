@@ -108,6 +108,10 @@ bool STM32FDCan::setup_internal() {
       ESP_LOGI(TAG, "FDCAN: Started");
     }
 
+    if (on_initialized_) {
+      on_initialized_->trigger();
+    }
+
     // filter.FilterActivation = CAN_FILTER_ENABLE;
     // filter.FilterScale = CAN_FILTERSCALE_16BIT;
     // filter.FilterMode = CAN_FILTERMODE_IDMASK;
