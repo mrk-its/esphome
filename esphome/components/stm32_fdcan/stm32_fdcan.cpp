@@ -189,23 +189,24 @@ canbus::Error STM32FDCan::send_message(struct canbus::CanFrame *frame) {
   return canbus::ERROR_OK;
 };
 
+const uint32_t RX_FIFO_IDS[] = {FDCAN_RX_FIFO0, FDCAN_RX_FIFO1};
+
 canbus::Error STM32FDCan::read_message(struct canbus::CanFrame *frame) {
-  uint32_t fill_rx0 = HAL_FDCAN_GetRxFifoFillLevel(&hcan, FDCAN_RX_FIFO0);
-  uint32_t fill_rx1 = HAL_FDCAN_GetRxFifoFillLevel(&hcan, FDCAN_RX_FIFO1);
-  if (fill_rx1) {
-    ESP_LOGE(TAG, "not expected message in fifo #1");
-  }
   FDCAN_RxHeaderTypeDef header;
-  if (fill_rx0) {
-    if (HAL_FDCAN_GetRxMessage(&hcan, FDCAN_RX_FIFO0, &header, frame->data) == HAL_OK) {
-      frame->can_id = header.Identifier;
-      frame->use_extended_id = (header.IdType == FDCAN_EXTENDED_ID);
-      frame->remote_transmission_request = (header.RxFrameType == FDCAN_REMOTE_FRAME);
-      frame->can_data_length_code = header.DataLength;
-      ESP_LOGV(TAG, "fifo #0, received msg from %lu, dlc: %d", frame->can_id, frame->can_data_length_code);
-      return canbus::ERROR_OK;
-    } else {
-      return canbus::ERROR_FAIL;
+  for (int fifo_idx = 0; fifo_idx < sizeof(RX_FIFO_IDS) / sizeof(uint32_t); fifo_idx++) {
+    uint32_t rx_fifo_id = RX_FIFO_IDS[fifo_idx];
+    uint32_t fill_level = HAL_FDCAN_GetRxFifoFillLevel(&hcan, rx_fifo_id);
+    if (fill_level) {
+      if (HAL_FDCAN_GetRxMessage(&hcan, rx_fifo_id, &header, frame->data) == HAL_OK) {
+        frame->can_id = header.Identifier;
+        frame->use_extended_id = (header.IdType == FDCAN_EXTENDED_ID);
+        frame->remote_transmission_request = (header.RxFrameType == FDCAN_REMOTE_FRAME);
+        frame->can_data_length_code = header.DataLength;
+        ESP_LOGV(TAG, "fifo #%d, received msg from %lu, dlc: %d", fifo_idx, frame->can_id, frame->can_data_length_code);
+        return canbus::ERROR_OK;
+      } else {
+        return canbus::ERROR_FAIL;
+      }
     }
   }
   return canbus::ERROR_NOMSG;
