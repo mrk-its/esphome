@@ -1,6 +1,7 @@
 #ifdef USE_STM32
 #include "core.h"
 #include "esphome/core/log.h"
+#include "esphome/components/ota/ota_backend_stm32.h"
 
 static const char *TAG = "main";
 
@@ -25,10 +26,13 @@ uint8_t get_active_flash_bank() {
   volatile uint32_t remap = READ_BIT(SYSCFG->MEMRMP, 0x1 << 8);
   return remap == 0 ? FLASH_BANK_1 : FLASH_BANK_2;
 #elif defined(FLASH_BANK_2) && defined(OB_USER_BANK_SWAP)
-  // #error GO - TODO!
+#error GO - TODO!
   return 0;
 #else
-  return 0;
+  FLASH_OBProgramInitTypeDef ob_config = {0};
+  HAL_FLASHEx_OBGetConfig(&ob_config);
+  bool swapped = (ob_config.USERConfig & OB_SWAP_BANK_ENABLE) > 0;
+  return swapped ? FLASH_BANK_2 : FLASH_BANK_1;
 #endif
 }
 
@@ -51,8 +55,28 @@ void swap_flash_banks() {
   HAL_FLASHEx_OBProgram(&ob_config);
   HAL_FLASH_OB_Launch();
   HAL_FLASH_OB_Lock();
+#elif defined(U5)
+  FLASH_OBProgramInitTypeDef ob_config = {0};
+  HAL_FLASHEx_OBGetConfig(&ob_config);
+
+  if (get_active_flash_bank() == FLASH_BANK_1) {
+    ob_config.USERConfig |= OB_SWAP_BANK_ENABLE;
+  } else {
+    ob_config.USERConfig &= ~OB_SWAP_BANK_ENABLE;
+  }
+
+  ob_config.OptionType = OPTIONBYTE_USER;
+  ob_config.USERType = OB_USER_SWAP_BANK;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASH_OB_Unlock();
+  HAL_FLASHEx_OBProgram(&ob_config);
+  HAL_FLASH_OB_Launch();
+  HAL_FLASH_OB_Lock();
 #elif defined(FLASH_BANK_2) && defined(OB_USER_BANK_SWAP)
-// #error G0 - TODO!
+#error G0 - TODO!
+#else
+#error TODO: unsupported series
 #endif
 }
 

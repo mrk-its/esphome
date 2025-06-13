@@ -14,13 +14,24 @@ static const char *const TAG = "ota.stm32";
 std::unique_ptr<ota::OTABackend> make_ota_backend() { return make_unique<ota::STM32OTABackend>(); }
 
 const uint32_t FLASH_BANK_MASK = (FLASH_BANK_SIZE - 1);  // for 512kb BANK
+const uint32_t FLASH_BANK2_ADDR = FLASH_BASE + FLASH_BANK_SIZE;
+#if defined(L4)
 const uint32_t BLOCK_MASK = 7;
+#define HAL_FLASH_PROGRAM(dest_addr, src_addr) \
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, dest_addr, *((uint64_t *) src_addr))
+#elif defined(U5)
+const uint32_t BLOCK_MASK = 15;
+#define HAL_FLASH_PROGRAM(dest_addr, src_addr) \
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_QUADWORD, dest_addr, (uint32_t) src_addr)
+#else
+#error stm32 series not supported
+#endif
 
 OTAResponseTypes STM32OTABackend::begin(size_t image_size) {
   uint8_t active_bank = esphome::stm32::get_active_flash_bank();
   // always write to memory address of bank 2 (0x08080000)
   // as HAL_FLASH_Program takes bank swapping into account!
-  dest_addr_ = FLASH_BANK2_END & ~FLASH_BANK_MASK;
+  dest_addr_ = FLASH_BANK2_ADDR;
   image_size_ = image_size;
   HAL_FLASH_Unlock();
   ESP_LOGI(TAG, "starting ota, image_size: %u, active_bank: %d", image_size, active_bank);
@@ -48,7 +59,8 @@ OTAResponseTypes STM32OTABackend::write(uint8_t *data, size_t len) {
       if (dest_addr_ & FLASH_BANK_MASK) {
         // buffer is full
         uint32_t flash_addr = ((dest_addr_ - 1) & ~BLOCK_MASK);
-        HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, flash_addr, *((uint64_t *) buffer_));
+        HAL_FLASH_PROGRAM(flash_addr, buffer_);
+        // HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, flash_addr, *((uint64_t *) buffer_));
       }
       *((uint64_t *) buffer_) = 0;
     }
@@ -61,14 +73,15 @@ OTAResponseTypes STM32OTABackend::write(uint8_t *data, size_t len) {
 OTAResponseTypes STM32OTABackend::end() {
   if (dest_addr_ & FLASH_BANK_MASK) {
     uint32_t flash_addr = ((dest_addr_ - 1) & ~BLOCK_MASK);
-    HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, flash_addr, *((uint64_t *) buffer_));
+    HAL_FLASH_PROGRAM(flash_addr, buffer_);
+    // HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, flash_addr, *((uint64_t *) buffer_));
   }
   uint32_t uploaded_size = (dest_addr_ & FLASH_BANK_MASK);
   // TODO: verify md5
   bool is_upload_ok = (uploaded_size == image_size_);
   ESP_LOGI(TAG, "uploaded: %lu, is_ok: %d", uploaded_size, is_upload_ok);
   if (is_upload_ok) {
-    ESP_LOGI(TAG, "successfully uploaded %lu bytes, swapping the flash banks", uploaded_size);
+    ESP_LOGI(TAG, "successfully uploaded %lu bytes, DO NOT swapping the flash banks", uploaded_size);
     ::esphome::stm32::swap_flash_banks();
   } else {
     ESP_LOGE(TAG, "error: uploaded %lu (of %lu) bytes", uploaded_size, image_size_);
