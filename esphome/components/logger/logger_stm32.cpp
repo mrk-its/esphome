@@ -12,7 +12,7 @@ void Logger::pre_setup() {
   hw_uart_ = nullptr;
 }
 
-void Logger::set_uart_parent(esphome::uart::UARTComponent *uart) { hw_uart_ = uart; }
+void Logger::set_uart_parent(uart::UARTComponent *uart) { hw_uart_ = uart; }
 
 void HOT Logger::write_msg_(const char *msg) {
   if (hw_uart_) {
@@ -20,6 +20,8 @@ void HOT Logger::write_msg_(const char *msg) {
     hw_uart_->write_array((uint8_t *) "\n", 1);
   }
 }
+
+const char *Logger::get_uart_selection_() { return ((uart::STM32UARTComponent *) hw_uart_)->get_name(); }
 
 }  // namespace logger
 }  // namespace esphome
