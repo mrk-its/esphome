@@ -33,12 +33,13 @@ OTAResponseTypes STM32OTABackend::begin(size_t image_size) {
   // as HAL_FLASH_Program takes bank swapping into account!
   dest_addr_ = FLASH_BANK2_ADDR;
   image_size_ = image_size;
+  md5_.init();
   HAL_FLASH_Unlock();
   ESP_LOGI(TAG, "starting ota, image_size: %u, active_bank: %d", image_size, active_bank);
   return OTA_RESPONSE_OK;
 }
 
-void STM32OTABackend::set_update_md5(const char *md5) {}
+void STM32OTABackend::set_update_md5(const char *expected_md5) { memcpy(this->expected_bin_md5_, expected_md5, 32); }
 
 OTAResponseTypes STM32OTABackend::write(uint8_t *data, size_t len) {
   uint8_t active_bank = esphome::stm32::get_active_flash_bank();
@@ -46,6 +47,7 @@ OTAResponseTypes STM32OTABackend::write(uint8_t *data, size_t len) {
   flash_erase.TypeErase = FLASH_TYPEERASE_PAGES;
   flash_erase.NbPages = 1;
   flash_erase.Banks = active_bank == FLASH_BANK_1 ? FLASH_BANK_2 : FLASH_BANK_1;
+  md5_.add(data, len);
   while (len--) {
     if (!(dest_addr_ & (FLASH_PAGE_SIZE - 1))) {
       // clear flash page at dest_addr
@@ -74,20 +76,18 @@ OTAResponseTypes STM32OTABackend::end() {
   if (dest_addr_ & FLASH_BANK_MASK) {
     uint32_t flash_addr = ((dest_addr_ - 1) & ~BLOCK_MASK);
     HAL_FLASH_PROGRAM(flash_addr, buffer_);
-    // HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, flash_addr, *((uint64_t *) buffer_));
   }
-  uint32_t uploaded_size = (dest_addr_ & FLASH_BANK_MASK);
-  // TODO: verify md5
-  bool is_upload_ok = (uploaded_size == image_size_);
-  ESP_LOGI(TAG, "uploaded: %lu, is_ok: %d", uploaded_size, is_upload_ok);
-  if (is_upload_ok) {
-    ESP_LOGI(TAG, "successfully uploaded %lu bytes, DO NOT swapping the flash banks", uploaded_size);
-    ::esphome::stm32::swap_flash_banks();
-  } else {
-    ESP_LOGE(TAG, "error: uploaded %lu (of %lu) bytes", uploaded_size, image_size_);
+  HAL_FLASH_Lock();
+
+  this->md5_.calculate();
+  if (!this->md5_.equals_hex(this->expected_bin_md5_)) {
+    ESP_LOGE(TAG, "invalid md5 sum, aborting");
+    this->abort();
+    return OTA_RESPONSE_ERROR_MD5_MISMATCH;
   }
 
-  HAL_FLASH_Lock();
+  ESP_LOGI(TAG, "successfully uploaded %lu bytes, swap the flash banks", image_size_);
+  ::esphome::stm32::swap_flash_banks();
   return OTA_RESPONSE_OK;
 }
 

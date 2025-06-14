@@ -4,6 +4,7 @@
 
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
+#include "esphome/components/md5/md5.h"
 
 namespace esphome {
 namespace ota {
@@ -21,6 +22,8 @@ class STM32OTABackend : public OTABackend {
   uint32_t dest_addr_;
   uint32_t image_size_;
   uint8_t buffer_[8];
+  char expected_bin_md5_[32];
+  md5::MD5Digest md5_{};
 };
 
 }  // namespace ota
