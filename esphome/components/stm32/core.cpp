@@ -1,7 +1,6 @@
 #ifdef USE_STM32
 #include "core.h"
 #include "esphome/core/log.h"
-#include "esphome/components/ota/ota_backend_stm32.h"
 
 static const char *TAG = "main";
 
