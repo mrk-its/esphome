@@ -190,8 +190,9 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(Logger),
-            cv.GenerateID(CONF_UART_ID): cv.All(
-                cv.only_on([PLATFORM_STM32]), cv.use_id(uart.UARTComponent)
+            cv.GenerateID(CONF_UART_ID): cv.Any(
+                cv.All(cv.only_on([PLATFORM_STM32]), cv.use_id(uart.UARTComponent)),
+                lambda x: None,  # TODO!
             ),
             cv.Optional(CONF_BAUD_RATE, default=115200): cv.positive_int,
             cv.Optional(CONF_TX_BUFFER_SIZE, default=512): cv.validate_bytes,
@@ -353,7 +354,7 @@ async def to_code(config):
     except cv.Invalid:
         pass
 
-    if CONF_UART_ID in config:
+    if config.get(CONF_UART_ID):
         await uart.register_uart_device(log, config)
 
     # Register at end for safe mode
