@@ -63,13 +63,13 @@ bool DS2484OneWireBus::reset_device() {
   return true;
 };
 
-bool DS2484OneWireBus::reset() {
+int DS2484OneWireBus::reset_int() {
   ESP_LOGVV(TAG, "reset");
   uint8_t reset_cmd = 0xb4;
   if (this->write(&reset_cmd, 1) != i2c::ERROR_OK) {
-    return false;
+    return -1;
   }
-  return wait_for_completion();
+  return wait_for_completion() ? 1 : 0;
 };
 
 void DS2484OneWireBus::write8_(uint8_t value) {

@@ -16,7 +16,7 @@ class DS2484OneWireBus : public one_wire::OneWireBus, public i2c::I2CDevice, pub
   float get_setup_priority() const override { return setup_priority::BUS - 1.0; }
 
   bool reset_device();
-  virtual bool reset() override;
+  virtual int reset_int() override;
   virtual void write8(uint8_t) override;
   virtual void write64(uint64_t) override;
   virtual uint8_t read8() override;
