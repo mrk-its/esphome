@@ -85,7 +85,7 @@ void STM32I2CBus::setup() {
 
 ErrorCode STM32I2CBus::readv(uint8_t address, ReadBuffer *buffers, size_t cnt) {
   if (cnt <= 1) {
-    if (HAL_I2C_Master_Receive(&i2c_handle_, address, cnt ? buffers->data : nullptr, cnt ? buffers->len : 0, 20) ==
+    if (HAL_I2C_Master_Receive(&i2c_handle_, address << 1, cnt ? buffers->data : nullptr, cnt ? buffers->len : 0, 20) ==
         HAL_OK) {
       return ERROR_OK;
     }
@@ -101,7 +101,7 @@ ErrorCode STM32I2CBus::readv(uint8_t address, ReadBuffer *buffers, size_t cnt) {
     ESP_LOGE(TAG, "read buffer overflow");
     return ERROR_UNKNOWN;
   }
-  if (HAL_I2C_Master_Receive(&i2c_handle_, address, buffer, len, 20) == HAL_OK) {
+  if (HAL_I2C_Master_Receive(&i2c_handle_, address << 1, buffer, len, 20) == HAL_OK) {
     uint8_t *ptr = buffer;
     for (size_t i = 0; i < cnt; i++) {
       memcpy(buffers[i].data, ptr, buffers[i].len);
@@ -114,7 +114,7 @@ ErrorCode STM32I2CBus::readv(uint8_t address, ReadBuffer *buffers, size_t cnt) {
 
 ErrorCode STM32I2CBus::writev(uint8_t address, WriteBuffer *buffers, size_t cnt, bool stop) {
   if (cnt <= 1) {
-    if (HAL_I2C_Master_Transmit(&i2c_handle_, address, (uint8_t *) (cnt ? buffers->data : nullptr),
+    if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, (uint8_t *) (cnt ? buffers->data : nullptr),
                                 cnt ? buffers->len : 0, 20) == HAL_OK) {
       return ERROR_OK;
     }
@@ -132,7 +132,7 @@ ErrorCode STM32I2CBus::writev(uint8_t address, WriteBuffer *buffers, size_t cnt,
     buffers++;
     cnt--;
   }
-  if (HAL_I2C_Master_Transmit(&i2c_handle_, address, buffer, len, 20) == HAL_OK) {
+  if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, buffer, len, 20) == HAL_OK) {
     return ERROR_OK;
   }
   return ERROR_NOT_ACKNOWLEDGED;
