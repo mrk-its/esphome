@@ -1,18 +1,21 @@
+import logging
+
 from esphome import pins
 import esphome.codegen as cg
+from esphome.components import esp32
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_ADDRESS,
     CONF_FREQUENCY,
     CONF_I2C_ID,
     CONF_ID,
-    CONF_INPUT,
     CONF_INSTANCE,
-    CONF_OUTPUT,
     CONF_SCAN,
     CONF_SCL,
     CONF_SDA,
     CONF_TIMEOUT,
+    KEY_CORE,
+    KEY_FRAMEWORK_VERSION,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
     PLATFORM_RP2040,
@@ -21,11 +24,13 @@ from esphome.const import (
 from esphome.core import CORE, coroutine_with_priority
 import esphome.final_validate as fv
 
+LOGGER = logging.getLogger(__name__)
 CODEOWNERS = ["@esphome/core"]
 i2c_ns = cg.esphome_ns.namespace("i2c")
 I2CBus = i2c_ns.class_("I2CBus")
-ArduinoI2CBus = i2c_ns.class_("ArduinoI2CBus", I2CBus, cg.Component)
-IDFI2CBus = i2c_ns.class_("IDFI2CBus", I2CBus, cg.Component)
+InternalI2CBus = i2c_ns.class_("InternalI2CBus", I2CBus)
+ArduinoI2CBus = i2c_ns.class_("ArduinoI2CBus", InternalI2CBus, cg.Component)
+IDFI2CBus = i2c_ns.class_("IDFI2CBus", InternalI2CBus, cg.Component)
 I2CDevice = i2c_ns.class_("I2CDevice")
 STM32I2CBus = i2c_ns.class_("STM32I2CBus", I2CBus, cg.Component)
 
@@ -45,9 +50,31 @@ def _bus_declare_type(value):
     raise NotImplementedError
 
 
-pin_with_input_and_output_support = pins.internal_gpio_pin_number(
-    {CONF_OUTPUT: True, CONF_INPUT: True}
-)
+def validate_config(config):
+    if (
+        config[CONF_SCAN]
+        and CORE.is_esp32
+        and CORE.using_esp_idf
+        and esp32.get_esp32_variant()
+        in [
+            esp32.const.VARIANT_ESP32C5,
+            esp32.const.VARIANT_ESP32C6,
+            esp32.const.VARIANT_ESP32P4,
+        ]
+    ):
+        version: cv.Version = CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]
+        if version.major == 5 and (
+            (version.minor == 3 and version.patch <= 3)
+            or (version.minor == 4 and version.patch <= 1)
+        ):
+            LOGGER.warning(
+                "There is a bug in esp-idf version %s that breaks I2C scan, I2C scan "
+                "has been disabled, see https://github.com/esphome/issues/issues/7128",
+                str(version),
+            )
+            config[CONF_SCAN] = False
+    return config
+
 
 I2C_INSTANCES = ("I2C1", "I2C2", "I2C3")
 
@@ -62,11 +89,11 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): _bus_declare_type,
-            cv.Optional(CONF_SDA, default="SDA"): pin_with_input_and_output_support,
+            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_pin_number,
             cv.SplitDefault(CONF_SDA_PULLUP_ENABLED, esp32_idf=True): cv.All(
                 cv.only_with_esp_idf, cv.boolean
             ),
-            cv.Optional(CONF_SCL, default="SCL"): pin_with_input_and_output_support,
+            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_pin_number,
             cv.Optional(CONF_INSTANCE): cv.All(
                 cv.only_on([PLATFORM_STM32]), i2c_instance
             ),
@@ -81,12 +108,14 @@ CONFIG_SCHEMA = cv.All(
         }
     ).extend(cv.COMPONENT_SCHEMA),
     cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040, PLATFORM_STM32]),
+    validate_config,
 )
 
 
 @coroutine_with_priority(1.0)
 async def to_code(config):
     cg.add_global(i2c_ns.using)
+    cg.add_define("USE_I2C")
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 

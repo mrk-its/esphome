@@ -526,11 +526,15 @@ class BytesType(TypeInfo):
     reference_type = "std::string &"
     const_reference_type = "const std::string &"
     decode_length = "value.as_string()"
-    encode_func = "encode_string"
+    encode_func = "encode_bytes"
     wire_type = WireType.LENGTH_DELIMITED  # Uses wire type 2
 
+    @property
+    def encode_content(self) -> str:
+        return f"buffer.encode_bytes({self.number}, reinterpret_cast<const uint8_t*>(this->{self.field_name}.data()), this->{self.field_name}.size());"
+
     def dump(self, name: str) -> str:
-        o = f'out.append("\'").append({name}).append("\'");'
+        o = f"out.append(format_hex_pretty({name}));"
         return o
 
     def get_size_calculation(self, name: str, force: bool = False) -> str:
@@ -886,7 +890,7 @@ def build_message_type(
         public_content.append("#ifdef HAS_PROTO_MESSAGE_DUMP")
         snake_name = camel_to_snake(desc.name)
         public_content.append(
-            f'static constexpr const char *message_name() {{ return "{snake_name}"; }}'
+            f'const char *message_name() const override {{ return "{snake_name}"; }}'
         )
         public_content.append("#endif")
 
@@ -959,36 +963,35 @@ def build_message_type(
         prot = "bool decode_64bit(uint32_t field_id, Proto64Bit value) override;"
         protected_content.insert(0, prot)
 
-    o = f"void {desc.name}::encode(ProtoWriteBuffer buffer) const {{"
+    # Only generate encode method if there are fields to encode
     if encode:
+        o = f"void {desc.name}::encode(ProtoWriteBuffer buffer) const {{"
         if len(encode) == 1 and len(encode[0]) + len(o) + 3 < 120:
             o += f" {encode[0]} "
         else:
             o += "\n"
             o += indent("\n".join(encode)) + "\n"
-    o += "}\n"
-    cpp += o
-    prot = "void encode(ProtoWriteBuffer buffer) const override;"
-    public_content.append(prot)
+        o += "}\n"
+        cpp += o
+        prot = "void encode(ProtoWriteBuffer buffer) const override;"
+        public_content.append(prot)
+    # If no fields to encode, the default implementation in ProtoMessage will be used
 
-    # Add calculate_size method
-    o = f"void {desc.name}::calculate_size(uint32_t &total_size) const {{"
-
-    # Add a check for empty/default objects to short-circuit the calculation
-    # Only add this optimization if we have fields to check
+    # Add calculate_size method only if there are fields
     if size_calc:
+        o = f"void {desc.name}::calculate_size(uint32_t &total_size) const {{"
         # For a single field, just inline it for simplicity
         if len(size_calc) == 1 and len(size_calc[0]) + len(o) + 3 < 120:
             o += f" {size_calc[0]} "
         else:
-            # For multiple fields, add a short-circuit check
+            # For multiple fields
             o += "\n"
-            # Performance optimization: add all the size calculations
             o += indent("\n".join(size_calc)) + "\n"
-    o += "}\n"
-    cpp += o
-    prot = "void calculate_size(uint32_t &total_size) const override;"
-    public_content.append(prot)
+        o += "}\n"
+        cpp += o
+        prot = "void calculate_size(uint32_t &total_size) const override;"
+        public_content.append(prot)
+    # If no fields to calculate size for, the default implementation in ProtoMessage will be used
 
     o = f"void {desc.name}::dump_to(std::string &out) const {{"
     if dump:
@@ -1035,7 +1038,7 @@ SOURCE_BOTH = 0
 SOURCE_SERVER = 1
 SOURCE_CLIENT = 2
 
-RECEIVE_CASES: dict[int, str] = {}
+RECEIVE_CASES: dict[int, tuple[str, str | None]] = {}
 
 ifdefs: dict[str, str] = {}
 
@@ -1209,8 +1212,6 @@ def build_service_message_type(
         func = f"on_{snake}"
         hout += f"virtual void {func}(const {mt.name} &value){{}};\n"
         case = ""
-        if ifdef is not None:
-            case += f"#ifdef {ifdef}\n"
         case += f"{mt.name} msg;\n"
         case += "msg.decode(msg_data, msg_size);\n"
         if log:
@@ -1218,10 +1219,9 @@ def build_service_message_type(
             case += f'ESP_LOGVV(TAG, "{func}: %s", msg.dump().c_str());\n'
             case += "#endif\n"
         case += f"this->{func}(msg);\n"
-        if ifdef is not None:
-            case += "#endif\n"
         case += "break;"
-        RECEIVE_CASES[id_] = case
+        # Store the ifdef with the case for later use
+        RECEIVE_CASES[id_] = (case, ifdef)
 
         # Only close ifdef if we opened it
         if ifdef is not None:
@@ -1259,6 +1259,7 @@ def main() -> None:
     #include "api_pb2.h"
     #include "api_pb2_size.h"
     #include "esphome/core/log.h"
+    #include "esphome/core/helpers.h"
 
     #include <cinttypes>
 
@@ -1357,7 +1358,7 @@ def main() -> None:
     hpp += "  template<typename T>\n"
     hpp += "  bool send_message(const T &msg) {\n"
     hpp += "#ifdef HAS_PROTO_MESSAGE_DUMP\n"
-    hpp += "    this->log_send_message_(T::message_name(), msg.dump());\n"
+    hpp += "    this->log_send_message_(msg.message_name(), msg.dump());\n"
     hpp += "#endif\n"
     hpp += "    return this->send_message_(msg, T::MESSAGE_TYPE);\n"
     hpp += "  }\n\n"
@@ -1380,18 +1381,21 @@ def main() -> None:
     cases = list(RECEIVE_CASES.items())
     cases.sort()
     hpp += " protected:\n"
-    hpp += "  bool read_message(uint32_t msg_size, uint32_t msg_type, uint8_t *msg_data) override;\n"
-    out = f"bool {class_name}::read_message(uint32_t msg_size, uint32_t msg_type, uint8_t *msg_data) {{\n"
+    hpp += "  void read_message(uint32_t msg_size, uint32_t msg_type, uint8_t *msg_data) override;\n"
+    out = f"void {class_name}::read_message(uint32_t msg_size, uint32_t msg_type, uint8_t *msg_data) {{\n"
     out += "  switch (msg_type) {\n"
-    for i, case in cases:
-        c = f"case {i}: {{\n"
-        c += indent(case) + "\n"
-        c += "}"
-        out += indent(c, "    ") + "\n"
+    for i, (case, ifdef) in cases:
+        if ifdef is not None:
+            out += f"#ifdef {ifdef}\n"
+        c = f"    case {i}: {{\n"
+        c += indent(case, "      ") + "\n"
+        c += "    }"
+        out += c + "\n"
+        if ifdef is not None:
+            out += "#endif\n"
     out += "    default:\n"
-    out += "      return false;\n"
+    out += "      break;\n"
     out += "  }\n"
-    out += "  return true;\n"
     out += "}\n"
     cpp += out
     hpp += "};\n"
@@ -1425,25 +1429,40 @@ def main() -> None:
         hpp_protected += f"  void {on_func}(const {inp} &msg) override;\n"
         hpp += f"  virtual {ret} {func}(const {inp} &msg) = 0;\n"
         cpp += f"void {class_name}::{on_func}(const {inp} &msg) {{\n"
-        body = ""
-        if needs_conn:
-            body += "if (!this->is_connection_setup()) {\n"
-            body += "  this->on_no_setup_connection();\n"
-            body += "  return;\n"
-            body += "}\n"
-        if needs_auth:
-            body += "if (!this->is_authenticated()) {\n"
-            body += "  this->on_unauthenticated_access();\n"
-            body += "  return;\n"
-            body += "}\n"
 
-        if is_void:
-            body += f"this->{func}(msg);\n"
-        else:
-            body += f"{ret} ret = this->{func}(msg);\n"
-            body += "if (!this->send_message(ret)) {\n"
-            body += "  this->on_fatal_error();\n"
+        # Start with authentication/connection check if needed
+        if needs_auth or needs_conn:
+            # Determine which check to use
+            if needs_auth:
+                check_func = "this->check_authenticated_()"
+            else:
+                check_func = "this->check_connection_setup_()"
+
+            body = f"if ({check_func}) {{\n"
+
+            # Add the actual handler code, indented
+            handler_body = ""
+            if is_void:
+                handler_body = f"this->{func}(msg);\n"
+            else:
+                handler_body = f"{ret} ret = this->{func}(msg);\n"
+                handler_body += "if (!this->send_message(ret)) {\n"
+                handler_body += "  this->on_fatal_error();\n"
+                handler_body += "}\n"
+
+            body += indent(handler_body) + "\n"
             body += "}\n"
+        else:
+            # No auth check needed, just call the handler
+            body = ""
+            if is_void:
+                body += f"this->{func}(msg);\n"
+            else:
+                body += f"{ret} ret = this->{func}(msg);\n"
+                body += "if (!this->send_message(ret)) {\n"
+                body += "  this->on_fatal_error();\n"
+                body += "}\n"
+
         cpp += indent(body) + "\n" + "}\n"
 
         if ifdef is not None:

@@ -1190,11 +1190,11 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
    * After 30 seconds the display will go to sleep. Note: the display will only wakeup by a restart or by setting up
    * `thup`.
    */
-  void set_touch_sleep_timeout(uint32_t touch_sleep_timeout);
+  void set_touch_sleep_timeout(uint16_t touch_sleep_timeout);
 
   /**
    * Sets which page Nextion loads when exiting sleep mode. Note this can be set even when Nextion is in sleep mode.
-   * @param wake_up_page The page id, from 0 to the lage page in Nextion. Set 255 (not set to any existing page) to
+   * @param wake_up_page The page id, from 0 to the last page in Nextion. Set -1 (not set to any existing page) to
    * wakes up to current page.
    *
    * Example:
@@ -1204,11 +1204,11 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
    *
    * The display will wake up to page 2.
    */
-  void set_wake_up_page(uint8_t wake_up_page = 255);
+  void set_wake_up_page(int16_t wake_up_page = -1);
 
   /**
    * Sets which page Nextion loads when connecting to ESPHome.
-   * @param start_up_page The page id, from 0 to the lage page in Nextion. Set 255 (not set to any existing page) to
+   * @param start_up_page The page id, from 0 to the last page in Nextion. Set -1 (not set to any existing page) to
    * wakes up to current page.
    *
    * Example:
@@ -1218,7 +1218,7 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
    *
    * The display will go to page 2 when it establishes a connection to ESPHome.
    */
-  void set_start_up_page(uint8_t start_up_page = 255) { this->start_up_page_ = start_up_page; }
+  void set_start_up_page(int16_t start_up_page = -1) { this->start_up_page_ = start_up_page; }
 
   /**
    * Sets if Nextion should auto-wake from sleep when touch press occurs.
@@ -1309,14 +1309,28 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
 #ifdef USE_NEXTION_MAX_QUEUE_SIZE
   size_t max_queue_size_{0};
 #endif  // USE_NEXTION_MAX_QUEUE_SIZE
+
 #ifdef USE_NEXTION_COMMAND_SPACING
   NextionCommandPacer command_pacer_{0};
+
+  /**
+   * @brief Process any commands in the queue that are pending due to command spacing
+   *
+   * This method checks if the first item in the nextion_queue_ has a pending command
+   * that was previously blocked by command spacing. If spacing now allows and a
+   * pending command exists, it attempts to send the command. Once successfully sent,
+   * the pending command is cleared and the queue item continues normal processing.
+   *
+   * Called from loop() to retry sending commands that were delayed by spacing.
+   */
+  void process_pending_in_queue_();
 #endif  // USE_NEXTION_COMMAND_SPACING
+
   std::deque<NextionQueue *> nextion_queue_;
   std::deque<NextionQueue *> waveform_queue_;
   uint16_t recv_ret_string_(std::string &response, uint32_t timeout, bool recv_flag);
   void all_components_send_state_(bool force_update = false);
-  uint64_t comok_sent_ = 0;
+  uint32_t comok_sent_ = 0;
   bool remove_from_q_(bool report_empty = true);
 
   /**
@@ -1326,12 +1340,10 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
   bool ignore_is_setup_ = false;
 
   bool nextion_reports_is_setup_ = false;
-  uint8_t nextion_event_;
-
   void process_nextion_commands_();
   void process_serial_();
   bool is_updating_ = false;
-  uint32_t touch_sleep_timeout_ = 0;
+  uint16_t touch_sleep_timeout_ = 0;
   int16_t wake_up_page_ = -1;
   int16_t start_up_page_ = -1;
   bool auto_wake_on_touch_ = true;
@@ -1347,6 +1359,23 @@ class Nextion : public NextionBase, public PollingComponent, public uart::UARTDe
   bool add_no_result_to_queue_with_ignore_sleep_printf_(const std::string &variable_name, const char *format, ...)
       __attribute__((format(printf, 3, 4)));
   void add_no_result_to_queue_with_command_(const std::string &variable_name, const std::string &command);
+
+#ifdef USE_NEXTION_COMMAND_SPACING
+  /**
+   * @brief Add a command to the Nextion queue with a pending command for retry
+   *
+   * This method creates a queue entry for a command that was blocked by command spacing.
+   * The command string is stored in the queue item's pending_command field so it can
+   * be retried later when spacing allows. This ensures commands are not lost when
+   * sent too quickly.
+   *
+   * If the max_queue_size limit is configured and reached, the command will be dropped.
+   *
+   * @param variable_name Name of the variable or component associated with the command
+   * @param command The actual command string to be sent when spacing allows
+   */
+  void add_no_result_to_queue_with_pending_command_(const std::string &variable_name, const std::string &command);
+#endif  // USE_NEXTION_COMMAND_SPACING
 
   bool add_no_result_to_queue_with_printf_(const std::string &variable_name, const char *format, ...)
       __attribute__((format(printf, 3, 4)));

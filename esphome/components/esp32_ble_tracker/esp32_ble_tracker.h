@@ -85,6 +85,9 @@ class ESPBTDevice {
 
   const std::vector<ServiceData> &get_service_datas() const { return service_datas_; }
 
+  // Exposed through a function for use in lambdas
+  const BLEScanResult &get_scan_result() const { return *scan_result_; }
+
   bool resolve_irk(const uint8_t *irk) const;
 
   optional<ESPBLEiBeacon> get_ibeacon() const {
@@ -111,6 +114,7 @@ class ESPBTDevice {
   std::vector<ESPBTUUID> service_uuids_{};
   std::vector<ServiceData> manufacturer_datas_{};
   std::vector<ServiceData> service_datas_{};
+  const BLEScanResult *scan_result_{nullptr};
 };
 
 class ESP32BLETracker;
@@ -129,7 +133,7 @@ class ESPBTDeviceListener {
   ESP32BLETracker *parent_{nullptr};
 };
 
-enum class ClientState {
+enum class ClientState : uint8_t {
   // Connection is allocated
   INIT,
   // Client is disconnecting
@@ -165,7 +169,7 @@ enum class ScannerState {
   STOPPED,
 };
 
-enum class ConnectionType {
+enum class ConnectionType : uint8_t {
   // The default connection type, we hold all the services in ram
   // for the duration of the connection.
   V1,
@@ -193,15 +197,19 @@ class ESPBTClient : public ESPBTDeviceListener {
     }
   }
   ClientState state() const { return state_; }
-  int app_id;
+
+  // Memory optimized layout
+  uint8_t app_id;  // App IDs are small integers assigned sequentially
 
  protected:
+  // Group 1: 1-byte types
   ClientState state_{ClientState::INIT};
   // want_disconnect_ is set to true when a disconnect is requested
   // while the client is connecting. This is used to disconnect the
   // client as soon as we get the connection id (conn_id_) from the
   // ESP_GATTC_OPEN_EVT event.
   bool want_disconnect_{false};
+  // 2 bytes used, 2 bytes padding
 };
 
 class ESP32BLETracker : public Component,
@@ -262,7 +270,7 @@ class ESP32BLETracker : public Component,
   /// Called to set the scanner state. Will also call callbacks to let listeners know when state is changed.
   void set_scanner_state_(ScannerState state);
 
-  int app_id_{0};
+  uint8_t app_id_{0};
 
   /// Vector of addresses that have already been printed in print_bt_device_info
   std::vector<uint64_t> already_discovered_;
@@ -289,9 +297,9 @@ class ESP32BLETracker : public Component,
   // Consumer: ESPHome main loop (loop() method)
   // This design ensures zero blocking in the BT callback and prevents scan result loss
   BLEScanResult *scan_ring_buffer_;
-  std::atomic<size_t> ring_write_index_{0};      // Written only by BT callback (producer)
-  std::atomic<size_t> ring_read_index_{0};       // Written only by main loop (consumer)
-  std::atomic<size_t> scan_results_dropped_{0};  // Tracks buffer overflow events
+  std::atomic<uint8_t> ring_write_index_{0};       // Written only by BT callback (producer)
+  std::atomic<uint8_t> ring_read_index_{0};        // Written only by main loop (consumer)
+  std::atomic<uint16_t> scan_results_dropped_{0};  // Tracks buffer overflow events
 
   esp_bt_status_t scan_start_failed_{ESP_BT_STATUS_SUCCESS};
   esp_bt_status_t scan_set_param_failed_{ESP_BT_STATUS_SUCCESS};

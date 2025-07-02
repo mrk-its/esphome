@@ -224,7 +224,7 @@ void OnlineImage::loop() {
     this->height_ = buffer_height_;
     ESP_LOGD(TAG, "Image fully downloaded, read %zu bytes, width/height = %d/%d", this->downloader_->get_bytes_read(),
              this->width_, this->height_);
-    ESP_LOGD(TAG, "Total time: %lds", ::time(nullptr) - this->start_time_);
+    ESP_LOGD(TAG, "Total time: %" PRIu32 "s", (uint32_t) (::time(nullptr) - this->start_time_));
     this->etag_ = this->downloader_->get_response_header(ETAG_HEADER_NAME);
     this->last_modified_ = this->downloader_->get_response_header(LAST_MODIFIED_HEADER_NAME);
     this->download_finished_callback_.call(false);
@@ -344,7 +344,7 @@ void OnlineImage::end_connection_() {
 }
 
 bool OnlineImage::validate_url_(const std::string &url) {
-  if ((url.length() < 8) || (url.find("http") != 0) || (url.find("://") == std::string::npos)) {
+  if ((url.length() < 8) || !url.starts_with("http") || (url.find("://") == std::string::npos)) {
     ESP_LOGE(TAG, "URL is invalid and/or must be prefixed with 'http://' or 'https://'");
     return false;
   }

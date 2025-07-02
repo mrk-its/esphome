@@ -34,11 +34,9 @@ from esphome.const import (
     CONF_PORT,
     CONF_SUBSTITUTIONS,
     CONF_TOPIC,
-    PLATFORM_BK72XX,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
     PLATFORM_RP2040,
-    PLATFORM_RTL87XX,
     PLATFORM_STM32,
     SECRETS_FILES,
 )
@@ -355,7 +353,7 @@ def upload_program(config, args, host):
         if CORE.target_platform in (PLATFORM_RP2040, PLATFORM_STM32):
             return upload_using_platformio(config, args.device)
 
-        if CORE.target_platform in (PLATFORM_BK72XX, PLATFORM_RTL87XX):
+        if CORE.is_libretiny:
             return upload_using_platformio(config, host)
 
         return 1  # Unknown target platform

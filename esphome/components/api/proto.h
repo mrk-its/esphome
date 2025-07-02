@@ -327,12 +327,15 @@ class ProtoWriteBuffer {
 class ProtoMessage {
  public:
   virtual ~ProtoMessage() = default;
-  virtual void encode(ProtoWriteBuffer buffer) const = 0;
+  // Default implementation for messages with no fields
+  virtual void encode(ProtoWriteBuffer buffer) const {}
   void decode(const uint8_t *buffer, size_t length);
-  virtual void calculate_size(uint32_t &total_size) const = 0;
+  // Default implementation for messages with no fields
+  virtual void calculate_size(uint32_t &total_size) const {}
 #ifdef HAS_PROTO_MESSAGE_DUMP
   std::string dump() const;
   virtual void dump_to(std::string &out) const = 0;
+  virtual const char *message_name() const { return "unknown"; }
 #endif
 
  protected:
@@ -361,7 +364,7 @@ class ProtoService {
    */
   virtual ProtoWriteBuffer create_buffer(uint32_t reserve_size) = 0;
   virtual bool send_buffer(ProtoWriteBuffer buffer, uint16_t message_type) = 0;
-  virtual bool read_message(uint32_t msg_size, uint32_t msg_type, uint8_t *msg_data) = 0;
+  virtual void read_message(uint32_t msg_size, uint32_t msg_type, uint8_t *msg_data) = 0;
 
   // Optimized method that pre-allocates buffer based on message size
   bool send_message_(const ProtoMessage &msg, uint16_t message_type) {
@@ -376,6 +379,26 @@ class ProtoService {
 
     // Send the buffer
     return this->send_buffer(buffer, message_type);
+  }
+
+  // Authentication helper methods
+  bool check_connection_setup_() {
+    if (!this->is_connection_setup()) {
+      this->on_no_setup_connection();
+      return false;
+    }
+    return true;
+  }
+
+  bool check_authenticated_() {
+    if (!this->check_connection_setup_()) {
+      return false;
+    }
+    if (!this->is_authenticated()) {
+      this->on_unauthenticated_access();
+      return false;
+    }
+    return true;
   }
 };
 
