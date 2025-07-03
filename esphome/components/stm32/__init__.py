@@ -4,6 +4,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_BOARD,
+    CONF_PLATFORM,
     KEY_CORE,
     KEY_TARGET_FRAMEWORK,
     KEY_TARGET_PLATFORM,
@@ -37,6 +38,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_BOARD): cv.All(
                 cv.string_strict,
             ),
+            cv.Optional(CONF_PLATFORM, default="ststm32"): cv.string_strict,
             cv.Optional(CONF_BOARD_SERIES): cv.string_strict,
             cv.Optional(CONF_BOARD_FREQ): cv.string_strict,
             cv.Optional(CONF_CLOCK): optional_dict(dict),
@@ -53,11 +55,15 @@ async def to_code(config):
     cg.add_platformio_option("board", config[CONF_BOARD])
     cg.add_build_flag("-DUSE_STM32")
     cg.add_build_flag("-D" + config[CONF_BOARD_SERIES])
+    cg.add_platformio_option(
+        "platform_packages", "toolchain-gccarmnoneeabi @ ~1.120301.0"
+    )
+    cg.set_cpp_standard("gnu++20")
     cg.add_define("ESPHOME_BOARD", config[CONF_BOARD])
     cg.add_define("ESPHOME_VARIANT", "STM32")
 
     cg.add_platformio_option("framework", "stm32cube")
-    cg.add_platformio_option("platform", "ststm32")
+    cg.add_platformio_option("platform", config[CONF_PLATFORM])
     cg.add_platformio_option("monitor_speed", "115200")
     cg.add_platformio_option("upload_protocol", "stlink")
 
