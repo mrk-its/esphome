@@ -136,9 +136,12 @@ void _pin_mode(uint8_t pin, gpio::Flags flags, optional<uint8_t> af) {
   GPIO_InitStruct.Pull = (flags & gpio::Flags::FLAG_PULLUP)
                              ? GPIO_PULLUP
                              : ((flags & gpio::Flags::FLAG_PULLDOWN) ? GPIO_PULLDOWN : GPIO_NOPULL);
+// TODO
+#ifndef F1
   if (af) {
     GPIO_InitStruct.Alternate = *af;
   }
+#endif
 
 #ifdef GPIO_SPEED_HIGH
   GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;

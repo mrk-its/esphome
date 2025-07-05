@@ -14,6 +14,7 @@ from esphome.const import (
     CONF_DUMMY_RECEIVER,
     CONF_DUMMY_RECEIVER_ID,
     CONF_ID,
+    CONF_INSTANCE,
     CONF_INVERT,
     CONF_INVERTED,
     CONF_LAMBDA,
@@ -206,7 +207,13 @@ def maybe_empty_debug(value):
     return DEBUG_SCHEMA(value)
 
 
-STM32_PORTS = [
+def validate_port(value):
+    if not re.match(r"^/(?:[^/]+/)[^/]+$", value):
+        raise cv.Invalid("Port must be a valid device path")
+    return value
+
+
+STM32_INSTANCES = [
     "USART1",
     "USART2",
     "USART3",
@@ -224,14 +231,12 @@ STM32_PORTS = [
 ]
 
 
-def validate_port(value):
+def validate_instance(value):
     if CORE.is_stm32:
-        if value not in STM32_PORTS:
-            raise cv.Invalid(f"Port must be one of {STM32_PORTS}")
+        if value not in STM32_INSTANCES:
+            raise cv.Invalid(f"Port must be one of {STM32_INSTANCES}")
         return value
-    if not re.match(r"^/(?:[^/]+/)[^/]+$", value):
-        raise cv.Invalid("Port must be a valid device path")
-    return value
+    raise cv.Invalid("supported only on stm32")
 
 
 DEBUG_SCHEMA = cv.Schema(
@@ -266,8 +271,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_BAUD_RATE): cv.int_range(min=1),
             cv.Optional(CONF_TX_PIN): pins.internal_gpio_output_pin_schema,
             cv.Optional(CONF_RX_PIN): validate_rx_pin,
-            cv.Optional(CONF_PORT): cv.All(
-                validate_port, cv.only_on([PLATFORM_HOST, PLATFORM_STM32])
+            cv.Optional(CONF_PORT): cv.All(validate_port, cv.only_on([PLATFORM_HOST])),
+            cv.Optional(CONF_INSTANCE): cv.All(
+                validate_instance, cv.only_on([PLATFORM_STM32])
             ),
             cv.Optional(CONF_RX_BUFFER_SIZE, default=256): cv.validate_bytes,
             cv.Optional(CONF_STOP_BITS, default=1): cv.one_of(1, 2, int=True),
@@ -327,16 +333,17 @@ async def to_code(config):
         cg.add(var.set_rx_pin(rx_pin))
     if CONF_PORT in config:
         cg.add(var.set_name(config[CONF_PORT]))
-        if CORE.is_stm32:
-            port = config[CONF_PORT]
-            cg.add(var.set_instance(cg.RawExpression(port)))
-            cg.add(
-                var.set_clock_initializer(
-                    cg.RawExpression(
-                        f"[]() -> void{{ __HAL_RCC_{port}_CLK_ENABLE(); }}"
-                    )
+    if CORE.is_stm32 and CONF_INSTANCE in config:
+        instance = config[CONF_INSTANCE]
+        cg.add(var.set_name(instance))
+        cg.add(var.set_instance(cg.RawExpression(instance)))
+        cg.add(
+            var.set_clock_initializer(
+                cg.RawExpression(
+                    f"[]() -> void{{ __HAL_RCC_{instance}_CLK_ENABLE(); }}"
                 )
             )
+        )
     cg.add(var.set_rx_buffer_size(config[CONF_RX_BUFFER_SIZE]))
     cg.add(var.set_stop_bits(config[CONF_STOP_BITS]))
     cg.add(var.set_data_bits(config[CONF_DATA_BITS]))

@@ -81,7 +81,7 @@ void STM32UARTComponent::setup() {
 }
 
 void STM32UARTComponent::dump_config() {
-  ESP_LOGCONFIG(TAG, "UART Instance: %s:", this->name_.c_str());
+  ESP_LOGCONFIG(TAG, "Instance: %s", this->name_.c_str());
   LOG_PIN("  TX Pin: ", tx_pin_);
   LOG_PIN("  RX Pin: ", rx_pin_);
   ESP_LOGCONFIG(TAG, "  Baud Rate: %" PRIu32 " baud", this->baud_rate_);
