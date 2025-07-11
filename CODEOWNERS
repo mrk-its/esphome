@@ -28,7 +28,7 @@ esphome/components/aic3204/* @kbx81
 esphome/components/airthings_ble/* @jeromelaban
 esphome/components/airthings_wave_base/* @jeromelaban @kpfleming @ncareau
 esphome/components/airthings_wave_mini/* @ncareau
-esphome/components/airthings_wave_plus/* @jeromelaban
+esphome/components/airthings_wave_plus/* @jeromelaban @precurse
 esphome/components/alarm_control_panel/* @grahambrown11 @hwstar
 esphome/components/alpha3/* @jan-hofmeier
 esphome/components/am2315c/* @swoboda1337
@@ -87,6 +87,7 @@ esphome/components/bp1658cj/* @Cossid
 esphome/components/bp5758d/* @Cossid
 esphome/components/button/* @esphome/core
 esphome/components/bytebuffer/* @clydebarrow
+esphome/components/camera/* @DT-art1 @bdraco
 esphome/components/canbus/* @danielschramm @mvturnho
 esphome/components/cap1188/* @mreditor97
 esphome/components/captive_portal/* @OttoWinter
@@ -169,6 +170,7 @@ esphome/components/ft5x06/* @clydebarrow
 esphome/components/ft63x6/* @gpambrozio
 esphome/components/gcja5/* @gcormier
 esphome/components/gdk101/* @Szewcson
+esphome/components/gl_r01_i2c/* @pkejval
 esphome/components/globals/* @esphome/core
 esphome/components/gp2y1010au0f/* @zry98
 esphome/components/gp8403/* @jesserockz
@@ -253,6 +255,7 @@ esphome/components/ln882x/* @lamauny
 esphome/components/lock/* @esphome/core
 esphome/components/logger/* @esphome/core
 esphome/components/logger/select/* @clydebarrow
+esphome/components/lps22/* @nagisa
 esphome/components/ltr390/* @latonita @sjtrny
 esphome/components/ltr501/* @latonita
 esphome/components/ltr_als_ps/* @latonita
@@ -442,6 +445,8 @@ esphome/components/sun/* @OttoWinter
 esphome/components/sun_gtil2/* @Mat931
 esphome/components/switch/* @esphome/core
 esphome/components/switch/binary_sensor/* @ssieb
+esphome/components/sx126x/* @swoboda1337
+esphome/components/sx127x/* @swoboda1337
 esphome/components/syslog/* @clydebarrow
 esphome/components/t6615/* @tylermenezes
 esphome/components/tc74/* @sethgirvan

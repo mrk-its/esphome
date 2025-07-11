@@ -25,6 +25,11 @@ struct SavedNoisePsk {
 } PACKED;  // NOLINT
 #endif
 
+#ifndef USE_API_YAML_SERVICES
+// Forward declaration of helper function
+const std::vector<UserServiceDescriptor *> &get_empty_user_services_instance();
+#endif
+
 class APIServer : public Component, public Controller {
  public:
   APIServer();
@@ -35,10 +40,12 @@ class APIServer : public Component, public Controller {
   void dump_config() override;
   void on_shutdown() override;
   bool teardown() override;
+#ifdef USE_API_PASSWORD
   bool check_password(const std::string &password) const;
   bool uses_password() const;
-  void set_port(uint16_t port);
   void set_password(const std::string &password);
+#endif
+  void set_port(uint16_t port);
   void set_reboot_timeout(uint32_t reboot_timeout);
   void set_batch_delay(uint16_t batch_delay);
   uint16_t get_batch_delay() const { return batch_delay_; }
@@ -149,8 +156,11 @@ class APIServer : public Component, public Controller {
 #ifdef USE_API_YAML_SERVICES
     return this->user_services_;
 #else
-    static const std::vector<UserServiceDescriptor *> EMPTY;
-    return this->user_services_ ? *this->user_services_ : EMPTY;
+    if (this->user_services_) {
+      return *this->user_services_;
+    }
+    // Return reference to global empty instance (no guard needed)
+    return get_empty_user_services_instance();
 #endif
   }
 
@@ -179,7 +189,9 @@ class APIServer : public Component, public Controller {
 
   // Vectors and strings (12 bytes each on 32-bit)
   std::vector<std::unique_ptr<APIConnection>> clients_;
+#ifdef USE_API_PASSWORD
   std::string password_;
+#endif
   std::vector<uint8_t> shared_write_buffer_;  // Shared proto write buffer for all connections
   std::vector<HomeAssistantStateSubscription> state_subs_;
 #ifdef USE_API_YAML_SERVICES

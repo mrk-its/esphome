@@ -23,7 +23,7 @@ from esphome.core.entity_helpers import setup_entity
 
 DEPENDENCIES = ["esp32"]
 
-AUTO_LOAD = ["psram"]
+AUTO_LOAD = ["camera", "psram"]
 
 esp32_camera_ns = cg.esphome_ns.namespace("esp32_camera")
 ESP32Camera = esp32_camera_ns.class_("ESP32Camera", cg.PollingComponent, cg.EntityBase)
@@ -283,6 +283,7 @@ SETTERS = {
 
 
 async def to_code(config):
+    cg.add_define("USE_CAMERA")
     var = cg.new_Pvariable(config[CONF_ID])
     await setup_entity(var, config, "camera")
     await cg.register_component(var, config)
@@ -307,7 +308,7 @@ async def to_code(config):
     cg.add(var.set_frame_buffer_count(config[CONF_FRAME_BUFFER_COUNT]))
     cg.add(var.set_frame_size(config[CONF_RESOLUTION]))
 
-    cg.add_define("USE_ESP32_CAMERA")
+    cg.add_define("USE_CAMERA")
 
     if CORE.using_esp_idf:
         add_idf_component(name="espressif/esp32-camera", ref="2.0.15")

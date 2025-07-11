@@ -22,6 +22,7 @@ from esphome.components.libretiny.const import (
     COMPONENT_LN882X,
     COMPONENT_RTL87XX,
 )
+from esphome.config_helpers import filter_source_files_from_platform
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_ARGS,
@@ -45,6 +46,7 @@ from esphome.const import (
     PLATFORM_RP2040,
     PLATFORM_RTL87XX,
     PLATFORM_STM32,
+    PlatformFramework,
 )
 from esphome.core import CORE, Lambda, coroutine_with_priority
 
@@ -458,3 +460,25 @@ async def logger_set_level_to_code(config, action_id, template_arg, args):
 
     lambda_ = await cg.process_lambda(Lambda(text), args, return_type=cg.void)
     return cg.new_Pvariable(action_id, template_arg, lambda_)
+
+
+FILTER_SOURCE_FILES = filter_source_files_from_platform(
+    {
+        "logger_esp32.cpp": {
+            PlatformFramework.ESP32_ARDUINO,
+            PlatformFramework.ESP32_IDF,
+        },
+        "logger_esp8266.cpp": {PlatformFramework.ESP8266_ARDUINO},
+        "logger_host.cpp": {PlatformFramework.HOST_NATIVE},
+        "logger_rp2040.cpp": {PlatformFramework.RP2040_ARDUINO},
+        "logger_libretiny.cpp": {
+            PlatformFramework.BK72XX_ARDUINO,
+            PlatformFramework.RTL87XX_ARDUINO,
+            PlatformFramework.LN882X_ARDUINO,
+        },
+        "task_log_buffer.cpp": {
+            PlatformFramework.ESP32_ARDUINO,
+            PlatformFramework.ESP32_IDF,
+        },
+    }
+)

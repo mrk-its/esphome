@@ -14,11 +14,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#ifdef USE_ESP32
-#include <freertos/FreeRTOS.h>
-#include <freertos/semphr.h>
-#include <deque>
-#endif
 
 #if USE_WEBSERVER_VERSION >= 2
 extern const uint8_t ESPHOME_WEBSERVER_INDEX_HTML[] PROGMEM;
@@ -83,7 +78,7 @@ enum JsonDetail { DETAIL_ALL, DETAIL_STATE };
   This is because only minimal changes were made to the ESPAsyncWebServer lib_dep, it was undesirable to put deferred
   update logic into that library. We need one deferred queue per connection so instead of one AsyncEventSource with
   multiple clients, we have multiple event sources with one client each. This is slightly awkward which is why it's
-  implemented in a more straightforward way for ESP-IDF. Arudino platform will eventually go away and this workaround
+  implemented in a more straightforward way for ESP-IDF. Arduino platform will eventually go away and this workaround
   can be forgotten.
 */
 #ifdef USE_ARDUINO
@@ -126,6 +121,8 @@ class DeferredUpdateEventSource : public AsyncEventSource {
   // footprint is more important than speed here)
   std::vector<DeferredEvent> deferred_queue_;
   WebServer *web_server_;
+  uint16_t consecutive_send_failures_{0};
+  static constexpr uint16_t MAX_CONSECUTIVE_SEND_FAILURES = 2500;  // ~20 seconds at 125Hz loop rate
 
   // helper for allowing only unique entries in the queue
   void deq_push_back_with_dedup_(void *source, message_generator_t *message_generator);
@@ -501,7 +498,6 @@ class WebServer : public Controller, public Component, public AsyncWebHandler {
 
  protected:
   void add_sorting_info_(JsonObject &root, EntityBase *entity);
-  void schedule_(std::function<void()> &&f);
   web_server_base::WebServerBase *base_;
 #ifdef USE_ARDUINO
   DeferredUpdateEventSourceList events_;
@@ -521,10 +517,6 @@ class WebServer : public Controller, public Component, public AsyncWebHandler {
   const char *js_include_{nullptr};
 #endif
   bool expose_log_{true};
-#ifdef USE_ESP32
-  std::deque<std::function<void()>> to_schedule_;
-  SemaphoreHandle_t to_schedule_lock_;
-#endif
 };
 
 }  // namespace web_server

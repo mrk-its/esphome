@@ -1,0 +1,29 @@
+#include "esphome/core/helpers.h"
+
+#ifdef USE_STM32
+
+namespace esphome {
+
+uint32_t random_uint32() { return 42; }
+bool random_bytes(uint8_t *data, size_t len) {
+  while (len--)
+    *data++ = random_uint32();
+}
+
+// ESP8266 doesn't have mutexes, but that shouldn't be an issue as it's single-core and non-preemptive OS.
+Mutex::Mutex() {}
+Mutex::~Mutex() {}
+void Mutex::lock() {}
+bool Mutex::try_lock() { return true; }
+void Mutex::unlock() {}
+
+IRAM_ATTR InterruptLock::InterruptLock() {}
+IRAM_ATTR InterruptLock::~InterruptLock() {}
+
+void get_mac_address_raw(uint8_t *mac) {  // NOLINT(readability-non-const-parameter)
+  memset(mac, 0, 6);
+}
+
+}  // namespace esphome
+
+#endif  // USE_STM32

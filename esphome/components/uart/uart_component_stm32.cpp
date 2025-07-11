@@ -27,18 +27,28 @@ void STM32UARTComponent::setup() {
   }
 
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+
+#ifdef RCC_PERIPHCLK_USART1
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
+#endif
+
+#ifdef RCC_USART1CLKSOURCE_SYSCLK
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_SYSCLK;
+#endif
   HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
 
   uart_handle_.Init.BaudRate = baud_rate_;
   switch (data_bits_) {
+#ifdef UART_WORDLENGTH_7B
     case 7:
       uart_handle_.Init.WordLength = UART_WORDLENGTH_7B;
       break;
+#endif
+#ifdef UART_WORDLENGTH_9B
     case 9:
       uart_handle_.Init.WordLength = UART_WORDLENGTH_9B;
       break;
+#endif
     default:
       uart_handle_.Init.WordLength = UART_WORDLENGTH_8B;
       break;
