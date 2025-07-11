@@ -9,7 +9,7 @@ STM32Can = ns.class_(
     CanbusComponent,
 )
 
-DEPENDENCIES = ["logger"]
+DEPENDENCIES = []
 
 CONFIG_SCHEMA = CANBUS_SCHEMA.extend(
     {
