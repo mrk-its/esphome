@@ -11,31 +11,37 @@ void STM32I2CBus::setup() {
 
 #ifdef I2C1
   if (i2c_handle_.Instance == I2C1) {
+#ifdef RCC_PERIPHCLK_I2C1
     PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_SYSCLK;
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
       Error_Handler();
     }
+#endif
     __HAL_RCC_I2C1_CLK_ENABLE();
   }
 #endif
 #ifdef I2C2
   if (i2c_handle_.Instance == I2C2) {
+#ifdef RCC_PERIPHCLK_I2C2
     PeriphClkInit.I2c1ClockSelection = RCC_I2C2CLKSOURCE_SYSCLK;
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C2;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
       Error_Handler();
     }
+#endif
     __HAL_RCC_I2C2_CLK_ENABLE();
   }
 #endif
 #ifdef I2C3
   if (i2c_handle_.Instance == I2C3) {
+#ifdef RCC_PERIPHCLK_I2C2
     PeriphClkInit.I2c1ClockSelection = RCC_I2C3CLKSOURCE_SYSCLK;
     PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C3;
     if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
       Error_Handler();
     }
+#endif
     __HAL_RCC_I2C3_CLK_ENABLE();
   }
 #endif
@@ -49,32 +55,45 @@ void STM32I2CBus::setup() {
   sda_pin_.setup();
   scl_pin_.setup();
 
+#if defined(F1) || defined(F)
+  i2c_handle_.Init.ClockSpeed = this->frequency_;
+#else
   // TODO
   // following timing sets ~100kHz SCL on STM32U5 160Mhz sysclk
   i2c_handle_.Init.Timing = 0x30909DEC;
+
+#endif
+
+#ifdef I2C_DUTYCYCLE_2
+  i2c_handle_.Init.DutyCycle = I2C_DUTYCYCLE_2;
+#endif
 
   i2c_handle_.Init.OwnAddress1 = 0;
   i2c_handle_.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   i2c_handle_.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
   i2c_handle_.Init.OwnAddress2 = 0;
+#ifdef I2C_OA2_NOMASK
   i2c_handle_.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+#endif
   i2c_handle_.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   i2c_handle_.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
   if (HAL_I2C_Init(&i2c_handle_) != HAL_OK) {
     Error_Handler();
   }
 
-  /** Configure Analogue filter
-   */
+/** Configure Analogue filter
+ */
+#ifdef I2C_ANALOGFILTER_ENABLE
   if (HAL_I2CEx_ConfigAnalogFilter(&i2c_handle_, I2C_ANALOGFILTER_ENABLE) != HAL_OK) {
     Error_Handler();
   }
+#endif
 
   /** Configure Digital filter
    */
-  if (HAL_I2CEx_ConfigDigitalFilter(&i2c_handle_, 0) != HAL_OK) {
-    Error_Handler();
-  }
+  // if (HAL_I2CEx_ConfigDigitalFilter(&i2c_handle_, 0) != HAL_OK) {
+  //   Error_Handler();
+  // }
   if (this->scan_) {
     ESP_LOGV(TAG, "Scanning i2c bus for active devices...");
     this->i2c_scan_();
@@ -113,9 +132,10 @@ ErrorCode STM32I2CBus::readv(uint8_t address, ReadBuffer *buffers, size_t cnt) {
 }
 
 ErrorCode STM32I2CBus::writev(uint8_t address, WriteBuffer *buffers, size_t cnt, bool stop) {
+  uint32_t timeout_ms = (this->timeout_ ? this->timeout_ : 20000) / 1000;
   if (cnt <= 1) {
     if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, (uint8_t *) (cnt ? buffers->data : nullptr),
-                                cnt ? buffers->len : 0, 20) == HAL_OK) {
+                                cnt ? buffers->len : 0, timeout_ms) == HAL_OK) {
       return ERROR_OK;
     }
     return ERROR_NOT_ACKNOWLEDGED;
@@ -132,7 +152,7 @@ ErrorCode STM32I2CBus::writev(uint8_t address, WriteBuffer *buffers, size_t cnt,
     buffers++;
     cnt--;
   }
-  if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, buffer, len, 20) == HAL_OK) {
+  if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, buffer, len, timeout_ms) == HAL_OK) {
     return ERROR_OK;
   }
   return ERROR_NOT_ACKNOWLEDGED;

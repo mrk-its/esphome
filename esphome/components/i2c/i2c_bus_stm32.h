@@ -28,7 +28,7 @@ class STM32I2CBus : public I2CBus, public Component {
   void set_scan(bool scan) { scan_ = scan; }
   void set_sda_pin(uint8_t sda_pin) { sda_pin_.set_pin(sda_pin); }
   void set_scl_pin(uint8_t scl_pin) { scl_pin_.set_pin(scl_pin); }
-  void set_frequency(uint32_t frequency) {}
+  void set_frequency(uint32_t frequency) { this->frequency_ = frequency; }
   void set_timeout(uint32_t timeout) { timeout_ = timeout; }
   void set_instance(I2C_TypeDef *instance) { i2c_handle_.Instance = instance; }
 
@@ -41,6 +41,7 @@ class STM32I2CBus : public I2CBus, public Component {
   stm32::STM32GPIOPin sda_pin_;
   stm32::STM32GPIOPin scl_pin_;
   uint32_t timeout_ = 0;
+  uint32_t frequency_ = 0;
   bool initialized_ = false;
 };
 
