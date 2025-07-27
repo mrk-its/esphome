@@ -44,6 +44,7 @@ class STM32UARTComponent : public UARTComponent, public Component {
   const char *get_name() { return this->name_.c_str(); }
 
  protected:
+  void check_logger_conflict() override {}
   UART_HandleTypeDef uart_handle_;
   std::string name_;
 };
