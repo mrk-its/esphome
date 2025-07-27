@@ -4,6 +4,9 @@
 #include "esphome/core/hal.h"
 #include <algorithm>
 #include <ranges>
+#ifdef USE_RUNTIME_STATS
+#include "esphome/components/runtime_stats/runtime_stats.h"
+#endif
 
 #ifdef USE_STATUS_LED
 #include "esphome/components/status_led/status_led.h"
@@ -52,6 +55,9 @@ void Application::setup() {
     return a->get_actual_setup_priority() > b->get_actual_setup_priority();
   });
 
+  // Initialize looping_components_ early so enable_pending_loops_() works during setup
+  this->calculate_looping_components_();
+
   for (uint32_t i = 0; i < this->components_.size(); i++) {
     Component *component = this->components_[i];
 
@@ -68,8 +74,11 @@ void Application::setup() {
 
     do {
       uint8_t new_app_state = STATUS_LED_WARNING;
-      this->scheduler.call();
-      this->feed_wdt();
+      uint32_t now = millis();
+
+      // Process pending loop enables to handle GPIO interrupts during setup
+      this->before_loop_tasks_(now);
+
       for (uint32_t j = 0; j <= i; j++) {
         // Update loop_component_start_time_ right before calling each component
         this->loop_component_start_time_ = millis();
@@ -78,6 +87,8 @@ void Application::setup() {
         this->app_state_ |= new_app_state;
         this->feed_wdt();
       }
+
+      this->after_loop_tasks_();
       this->app_state_ = new_app_state;
       yield();
     } while (!component->can_proceed());
@@ -89,35 +100,14 @@ void Application::setup() {
   clear_setup_priority_overrides();
 
   this->schedule_dump_config();
-  this->calculate_looping_components_();
 }
 void Application::loop() {
   uint8_t new_app_state = 0;
 
-  this->scheduler.call();
-
   // Get the initial loop time at the start
   uint32_t last_op_end_time = millis();
 
-  // Feed WDT with time
-  this->feed_wdt(last_op_end_time);
-
-  // Process any pending enable_loop requests from ISRs
-  // This must be done before marking in_loop_ = true to avoid race conditions
-  if (this->has_pending_enable_loop_requests_) {
-    // Clear flag BEFORE processing to avoid race condition
-    // If ISR sets it during processing, we'll catch it next loop iteration
-    // This is safe because:
-    // 1. Each component has its own pending_enable_loop_ flag that we check
-    // 2. If we can't process a component (wrong state), enable_pending_loops_()
-    //    will set this flag back to true
-    // 3. Any new ISR requests during processing will set the flag again
-    this->has_pending_enable_loop_requests_ = false;
-    this->enable_pending_loops_();
-  }
-
-  // Mark that we're in the loop for safe reentrant modifications
-  this->in_loop_ = true;
+  this->before_loop_tasks_(last_op_end_time);
 
   for (this->current_loop_index_ = 0; this->current_loop_index_ < this->looping_components_active_end_;
        this->current_loop_index_++) {
@@ -138,8 +128,16 @@ void Application::loop() {
     this->feed_wdt(last_op_end_time);
   }
 
-  this->in_loop_ = false;
+  this->after_loop_tasks_();
   this->app_state_ = new_app_state;
+
+#ifdef USE_RUNTIME_STATS
+  // Process any pending runtime stats printing after all components have run
+  // This ensures stats printing doesn't affect component timing measurements
+  if (global_runtime_stats != nullptr) {
+    global_runtime_stats->process_pending_stats(last_op_end_time);
+  }
+#endif
 
   // Use the last component's end time instead of calling millis() again
   auto elapsed = last_op_end_time - this->last_loop_;
@@ -149,7 +147,7 @@ void Application::loop() {
     this->yield_with_select_(0);
   } else {
     uint32_t delay_time = this->loop_interval_ - elapsed;
-    uint32_t next_schedule = this->scheduler.next_schedule_in().value_or(delay_time);
+    uint32_t next_schedule = this->scheduler.next_schedule_in(last_op_end_time).value_or(delay_time);
     // next_schedule is max 0.5*delay_time
     // otherwise interval=0 schedules result in constant looping with almost no sleep
     next_schedule = std::max(next_schedule, delay_time / 2);
@@ -273,7 +271,9 @@ void Application::calculate_looping_components_() {
   // Pre-reserve vector to avoid reallocations
   this->looping_components_.reserve(total_looping);
 
-  // First add all active components
+  // Add all components with loop override that aren't already LOOP_DONE
+  // Some components (like logger) may call disable_loop() during initialization
+  // before setup runs, so we need to respect their LOOP_DONE state
   for (auto *obj : this->components_) {
     if (obj->has_overridden_loop() &&
         (obj->get_component_state() & COMPONENT_STATE_MASK) != COMPONENT_STATE_LOOP_DONE) {
@@ -283,8 +283,8 @@ void Application::calculate_looping_components_() {
 
   this->looping_components_active_end_ = this->looping_components_.size();
 
-  // Then add all inactive (LOOP_DONE) components
-  // This handles components that called disable_loop() during setup, before this method runs
+  // Then add any components that are already LOOP_DONE to the inactive section
+  // This handles components that called disable_loop() during initialization
   for (auto *obj : this->components_) {
     if (obj->has_overridden_loop() &&
         (obj->get_component_state() & COMPONENT_STATE_MASK) == COMPONENT_STATE_LOOP_DONE) {
@@ -309,6 +309,12 @@ void Application::disable_component_loop_(Component *component) {
         if (this->in_loop_ && i == this->current_loop_index_) {
           // Decrement so we'll process the swapped component next
           this->current_loop_index_--;
+          // Update the loop start time to current time so the swapped component
+          // gets correct timing instead of inheriting stale timing.
+          // This prevents integer underflow in timing calculations by ensuring
+          // the swapped component starts with a fresh timing reference, avoiding
+          // errors caused by stale or wrapped timing values.
+          this->loop_component_start_time_ = millis();
         }
       }
       return;
@@ -392,6 +398,36 @@ void Application::enable_pending_loops_() {
   if (has_pending) {
     this->has_pending_enable_loop_requests_ = true;
   }
+}
+
+void Application::before_loop_tasks_(uint32_t loop_start_time) {
+  // Process scheduled tasks
+  this->scheduler.call(loop_start_time);
+
+  // Feed the watchdog timer
+  this->feed_wdt(loop_start_time);
+
+  // Process any pending enable_loop requests from ISRs
+  // This must be done before marking in_loop_ = true to avoid race conditions
+  if (this->has_pending_enable_loop_requests_) {
+    // Clear flag BEFORE processing to avoid race condition
+    // If ISR sets it during processing, we'll catch it next loop iteration
+    // This is safe because:
+    // 1. Each component has its own pending_enable_loop_ flag that we check
+    // 2. If we can't process a component (wrong state), enable_pending_loops_()
+    //    will set this flag back to true
+    // 3. Any new ISR requests during processing will set the flag again
+    this->has_pending_enable_loop_requests_ = false;
+    this->enable_pending_loops_();
+  }
+
+  // Mark that we're in the loop for safe reentrant modifications
+  this->in_loop_ = true;
+}
+
+void Application::after_loop_tasks_() {
+  // Clear the in_loop_ flag to indicate we're done processing components
+  this->in_loop_ = false;
 }
 
 #ifdef USE_SOCKET_SELECT_SUPPORT

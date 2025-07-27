@@ -368,8 +368,19 @@ class Application {
 
   uint8_t get_app_state() const { return this->app_state_; }
 
-// Helper macro for entity getter method declarations - reduces code duplication
-// When USE_DEVICE_ID is enabled in the future, this can be conditionally compiled to add device_id parameter
+// Helper macro for entity getter method declarations
+#ifdef USE_DEVICES
+#define GET_ENTITY_METHOD(entity_type, entity_name, entities_member) \
+  entity_type *get_##entity_name##_by_key(uint32_t key, uint32_t device_id, bool include_internal = false) { \
+    for (auto *obj : this->entities_member##_) { \
+      if (obj->get_object_id_hash() == key && obj->get_device_id() == device_id && \
+          (include_internal || !obj->is_internal())) \
+        return obj; \
+    } \
+    return nullptr; \
+  }
+  const std::vector<Device *> &get_devices() { return this->devices_; }
+#else
 #define GET_ENTITY_METHOD(entity_type, entity_name, entities_member) \
   entity_type *get_##entity_name##_by_key(uint32_t key, bool include_internal = false) { \
     for (auto *obj : this->entities_member##_) { \
@@ -378,10 +389,7 @@ class Application {
     } \
     return nullptr; \
   }
-
-#ifdef USE_DEVICES
-  const std::vector<Device *> &get_devices() { return this->devices_; }
-#endif
+#endif  // USE_DEVICES
 #ifdef USE_AREAS
   const std::vector<Area *> &get_areas() { return this->areas_; }
 #endif
@@ -504,6 +512,8 @@ class Application {
   void enable_component_loop_(Component *component);
   void enable_pending_loops_();
   void activate_looping_component_(uint16_t index);
+  void before_loop_tasks_(uint32_t loop_start_time);
+  void after_loop_tasks_();
 
   void feed_wdt_arch_();
 

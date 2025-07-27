@@ -1,4 +1,6 @@
-from . import DriverChip
+from esphome.components.mipi import DriverChip
+import esphome.config_validation as cv
+
 from .ili import ILI9488_A
 
 DriverChip(
@@ -128,6 +130,7 @@ DriverChip(
 
 ILI9488_A.extend(
     "PICO-RESTOUCH-LCD-3.5",
+    swap_xy=cv.UNDEFINED,
     spi_16=True,
     pixel_mode="16bit",
     mirror_x=True,

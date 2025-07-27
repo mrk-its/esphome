@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -577,21 +578,28 @@ template<typename... Ts> class CallbackManager<void(Ts...)> {
 /// Helper class to deduplicate items in a series of values.
 template<typename T> class Deduplicator {
  public:
-  /// Feeds the next item in the series to the deduplicator and returns whether this is a duplicate.
+  /// Feeds the next item in the series to the deduplicator and returns false if this is a duplicate.
   bool next(T value) {
-    if (this->has_value_) {
-      if (this->last_value_ == value)
-        return false;
+    if (this->has_value_ && !this->value_unknown_ && this->last_value_ == value) {
+      return false;
     }
     this->has_value_ = true;
+    this->value_unknown_ = false;
     this->last_value_ = value;
     return true;
   }
-  /// Returns whether this deduplicator has processed any items so far.
+  /// Returns true if the deduplicator's value was previously known.
+  bool next_unknown() {
+    bool ret = !this->value_unknown_;
+    this->value_unknown_ = true;
+    return ret;
+  }
+  /// Returns true if this deduplicator has processed any items.
   bool has_value() const { return this->has_value_; }
 
  protected:
   bool has_value_{false};
+  bool value_unknown_{false};
   T last_value_{};
 };
 
@@ -678,9 +686,26 @@ class InterruptLock {
   ~InterruptLock();
 
  protected:
-#if defined(USE_ESP8266) || defined(USE_RP2040)
+#if defined(USE_ESP8266) || defined(USE_RP2040) || defined(USE_ZEPHYR)
   uint32_t state_;
 #endif
+};
+
+/** Helper class to lock the lwIP TCPIP core when making lwIP API calls from non-TCPIP threads.
+ *
+ * This is needed on multi-threaded platforms (ESP32) when CONFIG_LWIP_TCPIP_CORE_LOCKING is enabled.
+ * It ensures thread-safe access to lwIP APIs.
+ *
+ * @note This follows the same pattern as InterruptLock - platform-specific implementations in helpers.cpp
+ */
+class LwIPLock {
+ public:
+  LwIPLock();
+  ~LwIPLock();
+
+  // Delete copy constructor and copy assignment operator to prevent accidental copying
+  LwIPLock(const LwIPLock &) = delete;
+  LwIPLock &operator=(const LwIPLock &) = delete;
 };
 
 /** Helper class to request `loop()` to be called as fast as possible.
@@ -783,7 +808,7 @@ template<class T> class RAMAllocator {
   T *reallocate(T *p, size_t n) { return this->reallocate(p, n, sizeof(T)); }
 
   T *reallocate(T *p, size_t n, size_t manual_size) {
-    size_t size = n * sizeof(T);
+    size_t size = n * manual_size;
     T *ptr = nullptr;
 #ifdef USE_ESP32
     if (this->flags_ & Flags::ALLOC_EXTERNAL) {

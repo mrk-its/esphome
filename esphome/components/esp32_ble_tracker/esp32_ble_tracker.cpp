@@ -35,8 +35,7 @@
 // bt_trace.h
 #undef TAG
 
-namespace esphome {
-namespace esp32_ble_tracker {
+namespace esphome::esp32_ble_tracker {
 
 static const char *const TAG = "esp32_ble_tracker";
 
@@ -128,44 +127,53 @@ void ESP32BLETracker::loop() {
     uint8_t write_idx = this->ring_write_index_.load(std::memory_order_acquire);
 
     while (read_idx != write_idx) {
-      // Process one result at a time directly from ring buffer
-      BLEScanResult &scan_result = this->scan_ring_buffer_[read_idx];
+      // Calculate how many contiguous results we can process in one batch
+      // If write > read: process all results from read to write
+      // If write <= read (wraparound): process from read to end of buffer first
+      size_t batch_size = (write_idx > read_idx) ? (write_idx - read_idx) : (SCAN_RESULT_BUFFER_SIZE - read_idx);
 
+      // Process the batch for raw advertisements
       if (this->raw_advertisements_) {
         for (auto *listener : this->listeners_) {
-          listener->parse_devices(&scan_result, 1);
+          listener->parse_devices(&this->scan_ring_buffer_[read_idx], batch_size);
         }
         for (auto *client : this->clients_) {
-          client->parse_devices(&scan_result, 1);
+          client->parse_devices(&this->scan_ring_buffer_[read_idx], batch_size);
         }
       }
 
+      // Process individual results for parsed advertisements
       if (this->parse_advertisements_) {
-        ESPBTDevice device;
-        device.parse_scan_rst(scan_result);
+#ifdef USE_ESP32_BLE_DEVICE
+        for (size_t i = 0; i < batch_size; i++) {
+          BLEScanResult &scan_result = this->scan_ring_buffer_[read_idx + i];
+          ESPBTDevice device;
+          device.parse_scan_rst(scan_result);
 
-        bool found = false;
-        for (auto *listener : this->listeners_) {
-          if (listener->parse_device(device))
-            found = true;
-        }
+          bool found = false;
+          for (auto *listener : this->listeners_) {
+            if (listener->parse_device(device))
+              found = true;
+          }
 
-        for (auto *client : this->clients_) {
-          if (client->parse_device(device)) {
-            found = true;
-            if (!connecting && client->state() == ClientState::DISCOVERED) {
-              promote_to_connecting = true;
+          for (auto *client : this->clients_) {
+            if (client->parse_device(device)) {
+              found = true;
+              if (!connecting && client->state() == ClientState::DISCOVERED) {
+                promote_to_connecting = true;
+              }
             }
           }
-        }
 
-        if (!found && !this->scan_continuous_) {
-          this->print_bt_device_info(device);
+          if (!found && !this->scan_continuous_) {
+            this->print_bt_device_info(device);
+          }
         }
+#endif  // USE_ESP32_BLE_DEVICE
       }
 
-      // Move to next entry in ring buffer
-      read_idx = (read_idx + 1) % SCAN_RESULT_BUFFER_SIZE;
+      // Update read index for entire batch
+      read_idx = (read_idx + batch_size) % SCAN_RESULT_BUFFER_SIZE;
 
       // Store with release to ensure reads complete before index update
       this->ring_read_index_.store(read_idx, std::memory_order_release);
@@ -511,6 +519,7 @@ void ESP32BLETracker::set_scanner_state_(ScannerState state) {
   this->scanner_state_callbacks_.call(state);
 }
 
+#ifdef USE_ESP32_BLE_DEVICE
 ESPBLEiBeacon::ESPBLEiBeacon(const uint8_t *data) { memcpy(&this->beacon_data_, data, sizeof(beacon_data_)); }
 optional<ESPBLEiBeacon> ESPBLEiBeacon::from_manufacturer_data(const ServiceData &data) {
   if (!data.uuid.contains(0x4C, 0x00))
@@ -751,13 +760,16 @@ void ESPBTDevice::parse_adv_(const uint8_t *payload, uint8_t len) {
     }
   }
 }
+
 std::string ESPBTDevice::address_str() const {
   char mac[24];
   snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X", this->address_[0], this->address_[1], this->address_[2],
            this->address_[3], this->address_[4], this->address_[5]);
   return mac;
 }
+
 uint64_t ESPBTDevice::address_uint64() const { return esp32_ble::ble_addr_to_uint64(this->address_); }
+#endif  // USE_ESP32_BLE_DEVICE
 
 void ESP32BLETracker::dump_config() {
   ESP_LOGCONFIG(TAG, "BLE Tracker:");
@@ -796,6 +808,7 @@ void ESP32BLETracker::dump_config() {
   }
 }
 
+#ifdef USE_ESP32_BLE_DEVICE
 void ESP32BLETracker::print_bt_device_info(const ESPBTDevice &device) {
   const uint64_t address = device.address_uint64();
   for (auto &disc : this->already_discovered_) {
@@ -866,8 +879,8 @@ bool ESPBTDevice::resolve_irk(const uint8_t *irk) const {
   return ecb_ciphertext[15] == (addr64 & 0xff) && ecb_ciphertext[14] == ((addr64 >> 8) & 0xff) &&
          ecb_ciphertext[13] == ((addr64 >> 16) & 0xff);
 }
+#endif  // USE_ESP32_BLE_DEVICE
 
-}  // namespace esp32_ble_tracker
-}  // namespace esphome
+}  // namespace esphome::esp32_ble_tracker
 
-#endif
+#endif  // USE_ESP32

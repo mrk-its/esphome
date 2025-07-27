@@ -183,19 +183,17 @@ async def yaml_config(request: pytest.FixtureRequest, unused_tcp_port: int) -> s
         content = content.replace("api:", f"api:\n  port: {unused_tcp_port}")
 
     # Add debug build flags for integration tests to enable assertions
-    if "esphome:" in content:
-        # Check if platformio_options already exists
-        if "platformio_options:" not in content:
-            # Add platformio_options with debug flags after esphome:
-            content = content.replace(
-                "esphome:",
-                "esphome:\n"
-                "  # Enable assertions for integration tests\n"
-                "  platformio_options:\n"
-                "    build_flags:\n"
-                '      - "-DDEBUG"  # Enable assert() statements\n'
-                '      - "-g"       # Add debug symbols',
-            )
+    if "esphome:" in content and "platformio_options:" not in content:
+        # Add platformio_options with debug flags after esphome:
+        content = content.replace(
+            "esphome:",
+            "esphome:\n"
+            "  # Enable assertions for integration tests\n"
+            "  platformio_options:\n"
+            "    build_flags:\n"
+            '      - "-DDEBUG"  # Enable assert() statements\n'
+            '      - "-g"       # Add debug symbols',
+        )
 
     return content
 
@@ -395,7 +393,7 @@ async def wait_and_connect_api_client(
         # Wait for connection with timeout
         try:
             await asyncio.wait_for(connected_future, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise TimeoutError(f"Failed to connect to API after {timeout} seconds")
 
         yield client
@@ -575,12 +573,12 @@ async def run_binary_and_wait_for_port(
             process.send_signal(signal.SIGINT)
             try:
                 await asyncio.wait_for(process.wait(), timeout=SIGINT_TIMEOUT)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # If SIGINT didn't work, try SIGTERM
                 process.terminate()
                 try:
                     await asyncio.wait_for(process.wait(), timeout=SIGTERM_TIMEOUT)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Last resort: SIGKILL
                     process.kill()
                     await process.wait()

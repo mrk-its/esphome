@@ -22,8 +22,7 @@
 #include "esphome/components/esp32_ble/ble.h"
 #include "esphome/components/esp32_ble/ble_uuid.h"
 
-namespace esphome {
-namespace esp32_ble_tracker {
+namespace esphome::esp32_ble_tracker {
 
 using namespace esp32_ble;
 
@@ -39,6 +38,7 @@ struct ServiceData {
   adv_data_t data;
 };
 
+#ifdef USE_ESP32_BLE_DEVICE
 class ESPBLEiBeacon {
  public:
   ESPBLEiBeacon() { memset(&this->beacon_data_, 0, sizeof(this->beacon_data_)); }
@@ -116,13 +116,16 @@ class ESPBTDevice {
   std::vector<ServiceData> service_datas_{};
   const BLEScanResult *scan_result_{nullptr};
 };
+#endif  // USE_ESP32_BLE_DEVICE
 
 class ESP32BLETracker;
 
 class ESPBTDeviceListener {
  public:
   virtual void on_scan_end() {}
+#ifdef USE_ESP32_BLE_DEVICE
   virtual bool parse_device(const ESPBTDevice &device) = 0;
+#endif
   virtual bool parse_devices(const BLEScanResult *scan_results, size_t count) { return false; };
   virtual AdvertisementParserType get_advertisement_parser_type() {
     return AdvertisementParserType::PARSED_ADVERTISEMENTS;
@@ -237,7 +240,9 @@ class ESP32BLETracker : public Component,
   void register_client(ESPBTClient *client);
   void recalculate_advertisement_parser_types();
 
+#ifdef USE_ESP32_BLE_DEVICE
   void print_bt_device_info(const ESPBTDevice &device);
+#endif
 
   void start_scan();
   void stop_scan();
@@ -315,7 +320,6 @@ class ESP32BLETracker : public Component,
 // NOLINTNEXTLINE
 extern ESP32BLETracker *global_esp32_ble_tracker;
 
-}  // namespace esp32_ble_tracker
-}  // namespace esphome
+}  // namespace esphome::esp32_ble_tracker
 
 #endif

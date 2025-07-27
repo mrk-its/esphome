@@ -16,21 +16,12 @@
 
 #include <algorithm>
 
-namespace esphome {
-namespace api {
+namespace esphome::api {
 
 static const char *const TAG = "api";
 
 // APIServer
 APIServer *global_api_server = nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
-#ifndef USE_API_YAML_SERVICES
-// Global empty vector to avoid guard variables (saves 8 bytes)
-// This is initialized at program startup before any threads
-static const std::vector<UserServiceDescriptor *> empty_user_services{};
-
-const std::vector<UserServiceDescriptor *> &get_empty_user_services_instance() { return empty_user_services; }
-#endif
 
 APIServer::APIServer() {
   global_api_server = this;
@@ -39,7 +30,6 @@ APIServer::APIServer() {
 }
 
 void APIServer::setup() {
-  ESP_LOGCONFIG(TAG, "Running setup");
   this->setup_controller();
 
 #ifdef USE_API_NOISE
@@ -113,7 +103,7 @@ void APIServer::setup() {
             return;
           }
           for (auto &c : this->clients_) {
-            if (!c->flags_.remove)
+            if (!c->flags_.remove && c->get_log_subscription_level() >= level)
               c->try_send_log_message(level, tag, message, message_len);
           }
         });
@@ -193,9 +183,9 @@ void APIServer::loop() {
 
     // Rare case: handle disconnection
 #ifdef USE_API_CLIENT_DISCONNECTED_TRIGGER
-    this->client_disconnected_trigger_->trigger(client->client_info_, client->client_peername_);
+    this->client_disconnected_trigger_->trigger(client->client_info_.name, client->client_info_.peername);
 #endif
-    ESP_LOGV(TAG, "Remove connection %s", client->client_info_.c_str());
+    ESP_LOGV(TAG, "Remove connection %s", client->client_info_.name.c_str());
 
     // Swap with the last element and pop (avoids expensive vector shifts)
     if (client_index < this->clients_.size() - 1) {
@@ -213,22 +203,20 @@ void APIServer::loop() {
 
 void APIServer::dump_config() {
   ESP_LOGCONFIG(TAG,
-                "API Server:\n"
+                "Server:\n"
                 "  Address: %s:%u",
                 network::get_use_address().c_str(), this->port_);
 #ifdef USE_API_NOISE
-  ESP_LOGCONFIG(TAG, "  Using noise encryption: %s", YESNO(this->noise_ctx_->has_psk()));
+  ESP_LOGCONFIG(TAG, "  Noise encryption: %s", YESNO(this->noise_ctx_->has_psk()));
   if (!this->noise_ctx_->has_psk()) {
-    ESP_LOGCONFIG(TAG, "  Supports noise encryption: YES");
+    ESP_LOGCONFIG(TAG, "  Supports encryption: YES");
   }
 #else
-  ESP_LOGCONFIG(TAG, "  Using noise encryption: NO");
+  ESP_LOGCONFIG(TAG, "  Noise encryption: NO");
 #endif
 }
 
 #ifdef USE_API_PASSWORD
-bool APIServer::uses_password() const { return !this->password_.empty(); }
-
 bool APIServer::check_password(const std::string &password) const {
   // depend only on input password length
   const char *a = this->password_.c_str();
@@ -387,6 +375,7 @@ void APIServer::send_homeassistant_service_call(const HomeassistantServiceRespon
   }
 }
 
+#ifdef USE_API_HOMEASSISTANT_STATES
 void APIServer::subscribe_home_assistant_state(std::string entity_id, optional<std::string> attribute,
                                                std::function<void(std::string)> f) {
   this->state_subs_.push_back(HomeAssistantStateSubscription{
@@ -410,6 +399,7 @@ void APIServer::get_home_assistant_state(std::string entity_id, optional<std::st
 const std::vector<APIServer::HomeAssistantStateSubscription> &APIServer::get_state_subs() const {
   return this->state_subs_;
 }
+#endif
 
 uint16_t APIServer::get_port() const { return this->port_; }
 
@@ -436,10 +426,11 @@ bool APIServer::save_noise_psk(psk_t psk, bool make_active) {
   ESP_LOGD(TAG, "Noise PSK saved");
   if (make_active) {
     this->set_timeout(100, [this, psk]() {
-      ESP_LOGW(TAG, "Disconnecting all clients to reset connections");
+      ESP_LOGW(TAG, "Disconnecting all clients to reset PSK");
       this->set_noise_psk(psk);
       for (auto &c : this->clients_) {
-        c->send_message(DisconnectRequest());
+        DisconnectRequest req;
+        c->send_message(req, DisconnectRequest::MESSAGE_TYPE);
       }
     });
   }
@@ -472,10 +463,12 @@ void APIServer::on_shutdown() {
 
   // Send disconnect requests to all connected clients
   for (auto &c : this->clients_) {
-    if (!c->send_message(DisconnectRequest())) {
+    DisconnectRequest req;
+    if (!c->send_message(req, DisconnectRequest::MESSAGE_TYPE)) {
       // If we can't send the disconnect request directly (tx_buffer full),
       // schedule it at the front of the batch so it will be sent with priority
-      c->schedule_message_front_(nullptr, &APIConnection::try_send_disconnect_request, DisconnectRequest::MESSAGE_TYPE);
+      c->schedule_message_front_(nullptr, &APIConnection::try_send_disconnect_request, DisconnectRequest::MESSAGE_TYPE,
+                                 DisconnectRequest::ESTIMATED_SIZE);
     }
   }
 }
@@ -491,6 +484,5 @@ bool APIServer::teardown() {
   return this->clients_.empty();
 }
 
-}  // namespace api
-}  // namespace esphome
+}  // namespace esphome::api
 #endif

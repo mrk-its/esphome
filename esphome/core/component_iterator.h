@@ -10,7 +10,7 @@
 
 namespace esphome {
 
-#ifdef USE_API
+#ifdef USE_API_SERVICES
 namespace api {
 class UserServiceDescriptor;
 }  // namespace api
@@ -45,7 +45,7 @@ class ComponentIterator {
 #ifdef USE_TEXT_SENSOR
   virtual bool on_text_sensor(text_sensor::TextSensor *text_sensor) = 0;
 #endif
-#ifdef USE_API
+#ifdef USE_API_SERVICES
   virtual bool on_service(api::UserServiceDescriptor *service);
 #endif
 #ifdef USE_CAMERA
@@ -122,7 +122,7 @@ class ComponentIterator {
 #ifdef USE_TEXT_SENSOR
     TEXT_SENSOR,
 #endif
-#ifdef USE_API
+#ifdef USE_API_SERVICES
     SERVICE,
 #endif
 #ifdef USE_CAMERA
@@ -171,6 +171,11 @@ class ComponentIterator {
   } state_{IteratorState::NONE};
   uint16_t at_{0};  // Supports up to 65,535 entities per type
   bool include_internal_{false};
+
+  template<typename PlatformItem>
+  void process_platform_item_(const std::vector<PlatformItem *> &items,
+                              bool (ComponentIterator::*on_item)(PlatformItem *));
+  void advance_platform_();
 };
 
 }  // namespace esphome

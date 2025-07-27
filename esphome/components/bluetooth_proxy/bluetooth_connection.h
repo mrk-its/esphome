@@ -4,14 +4,14 @@
 
 #include "esphome/components/esp32_ble_client/ble_client_base.h"
 
-namespace esphome {
-namespace bluetooth_proxy {
+namespace esphome::bluetooth_proxy {
 
 class BluetoothProxy;
 
 class BluetoothConnection : public esp32_ble_client::BLEClientBase {
  public:
   void dump_config() override;
+  void loop() override;
   bool gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if,
                            esp_ble_gattc_cb_param_t *param) override;
   void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) override;
@@ -27,6 +27,9 @@ class BluetoothConnection : public esp32_ble_client::BLEClientBase {
  protected:
   friend class BluetoothProxy;
 
+  void send_service_for_discovery_();
+  void reset_connection_(esp_err_t reason);
+
   // Memory optimized layout for 32-bit systems
   // Group 1: Pointers (4 bytes each, naturally aligned)
   BluetoothProxy *proxy_;
@@ -39,7 +42,6 @@ class BluetoothConnection : public esp32_ble_client::BLEClientBase {
   // 1 byte used, 1 byte padding
 };
 
-}  // namespace bluetooth_proxy
-}  // namespace esphome
+}  // namespace esphome::bluetooth_proxy
 
 #endif  // USE_ESP32
