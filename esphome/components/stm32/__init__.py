@@ -9,6 +9,7 @@ from esphome.const import (
     KEY_TARGET_FRAMEWORK,
     KEY_TARGET_PLATFORM,
     PLATFORM_STM32,
+    ThreadModel,
 )
 from esphome.core import CORE, coroutine_with_priority
 
@@ -80,6 +81,7 @@ async def to_code(config):
     cg.set_cpp_standard("gnu++20")
     cg.add_define("ESPHOME_BOARD", config[CONF_BOARD])
     cg.add_define("ESPHOME_VARIANT", "STM32")
+    cg.add_define(ThreadModel.SINGLE)
 
     cg.add_platformio_option("framework", "stm32cube")
     cg.add_platformio_option("platform", config[CONF_PLATFORM])
