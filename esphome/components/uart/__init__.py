@@ -321,13 +321,6 @@ async def to_code(config):
         instance = config[CONF_INSTANCE]
         cg.add(var.set_name(instance))
         cg.add(var.set_instance(cg.RawExpression(instance)))
-        # cg.add(
-        #     var.set_clock_initializer(
-        #         cg.RawExpression(
-        #             f"[]() -> void{{ __HAL_RCC_{instance}_CLK_ENABLE(); }}"
-        #         )
-        #     )
-        # )
         cg.add(cg.RawExpression(f"__HAL_RCC_{instance}_CLK_ENABLE()"))
     cg.add(var.set_rx_buffer_size(config[CONF_RX_BUFFER_SIZE]))
     cg.add(var.set_stop_bits(config[CONF_STOP_BITS]))

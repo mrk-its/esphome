@@ -11,7 +11,7 @@ namespace uart {
 
 class STM32UARTComponent : public UARTComponent, public Component {
  public:
-  STM32UARTComponent() : uart_handle_{nullptr} {}
+  STM32UARTComponent() {}
   void setup() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::BUS + 501.f; }
@@ -23,21 +23,6 @@ class STM32UARTComponent : public UARTComponent, public Component {
 
   int available() override;
   void flush() override;
-
-  /**
-   * Load the UART with the current settings.
-   * @param dump_config (Optional, default `true`): True for displaying new settings or
-   * false to change it quitely
-   *
-   * Example:
-   * ```cpp
-   * id(uart1).load_settings();
-   * ```
-   *
-   * This will load the current UART interface with the latest settings (baud_rate, parity, etc).
-   */
-  // void load_settings(bool dump_config) override;
-  // void load_settings() override { this->load_settings(true); }
 
   void set_instance(USART_TypeDef *instance) { this->uart_handle_.Instance = instance; }
   void set_name(const char *name) { this->name_ = name; }

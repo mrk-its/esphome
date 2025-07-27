@@ -4,10 +4,11 @@
 
 namespace esphome {
 
-uint32_t random_uint32() { return 42; }
+uint32_t random_uint32() { return rand(); }
 bool random_bytes(uint8_t *data, size_t len) {
   while (len--)
-    *data++ = random_uint32();
+    *data++ = random_uint32() & 0xff;
+  return true;
 }
 
 // ESP8266 doesn't have mutexes, but that shouldn't be an issue as it's single-core and non-preemptive OS.

@@ -76,7 +76,7 @@ enum UARTSelection : uint8_t {
   UART_SELECTION_UART0 = 0,
 #endif
   UART_SELECTION_UART1,
-#if defined(USE_LIBRETINY) || defined(USE_ESP32_VARIANT_ESP32) || defined(USE_STM32)
+#if defined(USE_LIBRETINY) || defined(USE_ESP32_VARIANT_ESP32)
   UART_SELECTION_UART2,
 #endif
 #ifdef USE_LOGGER_USB_CDC
