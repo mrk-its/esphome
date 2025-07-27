@@ -11,7 +11,7 @@ namespace uart {
 
 class STM32UARTComponent : public UARTComponent, public Component {
  public:
-  STM32UARTComponent() : uart_handle_{0} {}
+  STM32UARTComponent() : uart_handle_{nullptr} {}
   void setup() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::BUS + 501.f; }
@@ -39,19 +39,13 @@ class STM32UARTComponent : public UARTComponent, public Component {
   // void load_settings(bool dump_config) override;
   // void load_settings() override { this->load_settings(true); }
 
-  void set_instance(USART_TypeDef *instance) { uart_handle_.Instance = instance; }
-  void set_clock_initializer(void (*clock_initializer)(void)) { clock_initializer_ = clock_initializer; }
-  void set_name(const char *name) { name_ = name; }
-  const char *get_name() { return name_.c_str(); }
+  void set_instance(USART_TypeDef *instance) { this->uart_handle_.Instance = instance; }
+  void set_name(const char *name) { this->name_ = name; }
+  const char *get_name() { return this->name_.c_str(); }
 
  protected:
   UART_HandleTypeDef uart_handle_;
   std::string name_;
-  void (*clock_initializer_)(void);
-  void check_logger_conflict() override;
-
-  bool has_peek_{false};
-  uint8_t peek_byte_;
 };
 
 }  // namespace uart

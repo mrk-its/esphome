@@ -9,19 +9,19 @@ static const char *const TAG = "logger";
 
 void Logger::pre_setup() {
   global_logger = this;
-  hw_uart_ = nullptr;
+  this->hw_uart_ = nullptr;
 }
 
-void Logger::set_uart_parent(uart::UARTComponent *uart) { hw_uart_ = uart; }
+void Logger::set_uart_parent(uart::UARTComponent *uart) { this->hw_uart_ = uart; }
 
 void HOT Logger::write_msg_(const char *msg) {
-  if (hw_uart_) {
-    hw_uart_->write_array((uint8_t *) msg, strlen(msg));
-    hw_uart_->write_array((uint8_t *) "\n", 1);
+  if (this->hw_uart_) {
+    this->hw_uart_->write_array((uint8_t *) msg, strlen(msg));
+    this->hw_uart_->write_array((uint8_t *) "\n", 1);
   }
 }
 
-const char *Logger::get_uart_selection_() { return ((uart::STM32UARTComponent *) hw_uart_)->get_name(); }
+const char *Logger::get_uart_selection_() { return ((uart::STM32UARTComponent *) this->hw_uart_)->get_name(); }
 
 }  // namespace logger
 }  // namespace esphome

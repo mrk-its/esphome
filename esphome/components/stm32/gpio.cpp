@@ -71,11 +71,11 @@ void STM32GPIOPin::digital_write(bool value) { _digital_write(this->port_, this-
 
 std::string STM32GPIOPin::dump_summary() const {
   char buffer[32];
-  snprintf(buffer, sizeof(buffer), "P%c%u", 'A' + (pin_ >> 4), pin_ & 0xf);
+  snprintf(buffer, sizeof(buffer), "P%c%u", 'A' + (this->pin_ >> 4), this->pin_ & 0xf);
   return buffer;
 }
 
-bool STM32GPIOPin::digital_read() { return _digital_read(this->port_, pin_) != inverted_; }
+bool STM32GPIOPin::digital_read() { return _digital_read(this->port_, this->pin_) != inverted_; }
 
 void STM32GPIOPin::detach_interrupt() const {
   // TODO
