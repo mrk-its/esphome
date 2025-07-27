@@ -27,7 +27,7 @@ uint8_t get_active_flash_bank() {
 #elif defined(FLASH_BANK_2) && defined(OB_USER_BANK_SWAP)
 #error GO - TODO!
   return 0;
-#else
+#elif OB_SWAP_BANK_ENABLE
   FLASH_OBProgramInitTypeDef ob_config = {0};
   HAL_FLASHEx_OBGetConfig(&ob_config);
   bool swapped = (ob_config.USERConfig & OB_SWAP_BANK_ENABLE) > 0;
@@ -74,8 +74,6 @@ void swap_flash_banks() {
   HAL_FLASH_OB_Lock();
 #elif defined(FLASH_BANK_2) && defined(OB_USER_BANK_SWAP)
 #error G0 - TODO!
-#else
-#error TODO: unsupported series
 #endif
 }
 
@@ -85,7 +83,7 @@ void log_clock_config() {
 
   ESP_LOGI(TAG, "--- Clock Configuration ---");
   ESP_LOGI(TAG, "System Clock Frequency (SYSCLK): %lu Hz (max: %lu Hz)", sysClockFreq, F_CPU);
-  ESP_LOGI(TAG, "HSE Frequency: %lu Hz", HSE_VALUE);
+  ESP_LOGI(TAG, "HSE Frequency: %u Hz", HSE_VALUE);
   ESP_LOGI(TAG, "HCLK Frequency (AHB Bus): %lu Hz", hclkFreq);
 #ifdef HAL_RCC_GetPCLK1Freq
   uint32_t pclk1Freq = HAL_RCC_GetPCLK1Freq();
