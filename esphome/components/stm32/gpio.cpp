@@ -8,36 +8,51 @@ namespace stm32 {
 
 static const char *const TAG = "stm32";
 
-static GPIO_TypeDef *GPIO_PORTS[9] = {GPIOA, GPIOB, GPIOC,
-#ifdef __HAL_RCC_GPIOD_CLK_ENABLEX
-                                      GPIOD,
+static GPIO_TypeDef *GPIO_PORTS[9] = {
+#ifdef GPIOA
+    GPIOA,
 #else
-                                      nullptr,
+    nullptr,
 #endif
-#ifdef __HAL_RCC_GPIOE_CLK_ENABLEX
-                                      GPIOE,
+#ifdef GPIOB
+    GPIOB,
 #else
-                                      nullptr,
+    nullptr,
 #endif
-#ifdef __HAL_RCC_GPIOF_CLK_ENABLEX
-                                      GPIOF,
+#ifdef GPIOC
+    GPIOC,
 #else
-                                      nullptr,
+    nullptr,
 #endif
-#ifdef __HAL_RCC_GPIOG_CLK_ENABLEX
-                                      GPIOG,
+#ifdef GPIOD
+    GPIOD,
 #else
-                                      nullptr,
+    nullptr,
 #endif
-#ifdef __HAL_RCC_GPIOH_CLK_ENABLEX
-                                      GPIOH,
+#ifdef GPIOE
+    GPIOE,
 #else
-                                      nullptr,
+    nullptr,
 #endif
-#ifdef __HAL_RCC_GPIOI_CLK_ENABLEX
-                                      GPIOI
+#ifdef GPIOF
+    GPIOF,
 #else
-                                      nullptr
+    nullptr,
+#endif
+#ifdef GPIOG
+    GPIOG,
+#else
+    nullptr,
+#endif
+#ifdef GPIOH
+    GPIOH,
+#else
+    nullptr,
+#endif
+#ifdef GPIOI
+    GPIOI
+#else
+    nullptr
 #endif
 };
 

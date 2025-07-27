@@ -215,30 +215,12 @@ def validate_port(value):
     return value
 
 
-STM32_INSTANCES = [
-    "USART1",
-    "USART2",
-    "USART3",
-    "USART4",
-    "UART1",
-    "UART2",
-    "UART3",
-    "UART4",
-    "UART5",
-    "UART6",
-    "UART7",
-    "UART8",
-    "UART9",
-    "UART10",
-]
-
-
 def validate_instance(value):
     if CORE.is_stm32:
-        if value not in STM32_INSTANCES:
-            raise cv.Invalid(f"Port must be one of {STM32_INSTANCES}")
-        return value
-    raise cv.Invalid("supported only on stm32")
+        from esphome.components.stm32.const import KEY_STM32, KEY_UART_INSTANCES
+
+        return cv.one_of(*cv.CORE.data[KEY_STM32][KEY_UART_INSTANCES])(value)
+    return value
 
 
 DEBUG_SCHEMA = cv.Schema(
@@ -500,5 +482,6 @@ FILTER_SOURCE_FILES = filter_source_files_from_platform(
             PlatformFramework.RTL87XX_ARDUINO,
             PlatformFramework.LN882X_ARDUINO,
         },
+        "uart_component_stm32.cpp": {PlatformFramework.STM32},
     }
 )

@@ -17,8 +17,8 @@ void Mutex::lock() {}
 bool Mutex::try_lock() { return true; }
 void Mutex::unlock() {}
 
-IRAM_ATTR InterruptLock::InterruptLock() {}
-IRAM_ATTR InterruptLock::~InterruptLock() {}
+InterruptLock::InterruptLock() {}
+InterruptLock::~InterruptLock() {}
 
 void get_mac_address_raw(uint8_t *mac) {  // NOLINT(readability-non-const-parameter)
   memset(mac, 0, 6);

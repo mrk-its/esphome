@@ -14,7 +14,14 @@ from esphome.core import CORE, coroutine_with_priority
 
 from .boards import detect_board_details
 from .clock import board_clock_config, generate_clock_config
-from .const import CONF_BOARD_FREQ, CONF_BOARD_SERIES, CONF_CLOCK, KEY_BOARD, KEY_STM32
+from .const import (
+    CONF_BOARD_FREQ,
+    CONF_BOARD_SERIES,
+    CONF_CLOCK,
+    KEY_BOARD,
+    KEY_STM32,
+    KEY_UART_INSTANCES,
+)
 from .gpio import stm32_pin_to_code  # noqa
 from .utils import optional_dict
 
@@ -29,6 +36,16 @@ def set_core_data(config):
     CORE.data[KEY_CORE][KEY_TARGET_PLATFORM] = PLATFORM_STM32
     CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK] = "stm32cube"
     CORE.data[KEY_STM32][KEY_BOARD] = config[CONF_BOARD]
+
+    # TODO
+    CORE.data[KEY_STM32][KEY_UART_INSTANCES] = [
+        "USART1",
+        "USART2",
+        "USART3",
+        "UART4",
+        "UART5",
+        "LPUART1",
+    ]
     return config
 
 

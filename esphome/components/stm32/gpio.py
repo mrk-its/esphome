@@ -3,18 +3,7 @@ import re
 from esphome import pins
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.const import (
-    CONF_ANALOG,
-    CONF_ID,
-    CONF_INPUT,
-    CONF_INVERTED,
-    CONF_MODE,
-    CONF_NUMBER,
-    CONF_OPEN_DRAIN,
-    CONF_OUTPUT,
-    CONF_PULLDOWN,
-    CONF_PULLUP,
-)
+from esphome.const import CONF_ANALOG, CONF_ID, CONF_INVERTED, CONF_MODE, CONF_NUMBER
 from esphome.core import CORE
 
 from . import boards
@@ -66,23 +55,12 @@ def _translate_pin(value):
 
 def validate_gpio_pin(value):
     value = _translate_pin(value)
-    if value < 0 or value > 63:
+    if value < 0 or value > 255:
         raise cv.Invalid(f"STM32: Invalid pin number: {value}")
     return value
 
 
 def validate_supports(value):
-    board = CORE.data[KEY_STM32][KEY_BOARD]
-    if board != "rpipicow" or value[CONF_NUMBER] != 32:
-        return value
-    mode = value[CONF_MODE]
-    is_input = mode[CONF_INPUT]
-    is_output = mode[CONF_OUTPUT]
-    is_open_drain = mode[CONF_OPEN_DRAIN]
-    is_pullup = mode[CONF_PULLUP]
-    is_pulldown = mode[CONF_PULLDOWN]
-    if not is_output or is_input or is_open_drain or is_pullup or is_pulldown:
-        raise cv.Invalid("Only output mode is supported for Pico-w LED pin")
     return value
 
 
