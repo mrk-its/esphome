@@ -19,6 +19,7 @@ from .const import (
     CONF_BOARD_SERIES,
     CONF_CLOCK,
     KEY_BOARD,
+    KEY_GPIO_CLOCK_ENABLED,
     KEY_STM32,
     KEY_UART_INSTANCES,
 )
@@ -46,6 +47,7 @@ def set_core_data(config):
         "UART5",
         "LPUART1",
     ]
+    CORE.data[KEY_STM32][KEY_GPIO_CLOCK_ENABLED] = set()
     return config
 
 

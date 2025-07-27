@@ -7,7 +7,7 @@ from esphome.const import CONF_ANALOG, CONF_ID, CONF_INVERTED, CONF_MODE, CONF_N
 from esphome.core import CORE
 
 from . import boards
-from .const import CONF_AF, KEY_BOARD, KEY_STM32, stm32_ns
+from .const import CONF_AF, KEY_BOARD, KEY_GPIO_CLOCK_ENABLED, KEY_STM32, stm32_ns
 
 STM32GPIOPin = stm32_ns.class_("STM32GPIOPin", cg.InternalGPIOPin)
 
@@ -80,9 +80,15 @@ STM32_PIN_SCHEMA = cv.All(
 
 @pins.PIN_SCHEMA_REGISTRY.register("stm32", STM32_PIN_SCHEMA)
 async def stm32_pin_to_code(config):
-    # cg.add(cg.RawExpression(f"__HAL_RCC_GPIOA_CLK_ENABLE()"))
-    var = cg.new_Pvariable(config[CONF_ID])
     num = config[CONF_NUMBER]
+    gpio_port_num = num >> 4
+    gpio_port_enabled = CORE.data[KEY_STM32][KEY_GPIO_CLOCK_ENABLED]
+    port_name = f"GPIO{chr(65 + gpio_port_num)}"
+    if gpio_port_num not in gpio_port_enabled:
+        cg.add(cg.RawExpression(f"__HAL_RCC_{port_name}_CLK_ENABLE()"))
+        gpio_port_enabled.add(gpio_port_num)
+    var = cg.new_Pvariable(config[CONF_ID])
+    cg.add(var.set_port(cg.RawExpression(port_name)))
     cg.add(var.set_pin(num))
     cg.add(var.set_inverted(config[CONF_INVERTED]))
     cg.add(var.set_flags(pins.gpio_flags_expr(config[CONF_MODE])))

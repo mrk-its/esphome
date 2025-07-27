@@ -9,7 +9,6 @@ namespace esphome {
 namespace stm32 {
 
 uint16_t pin_to_mask(uint8_t pin);
-GPIO_TypeDef *pin_to_port(uint8_t pin);
 
 class STM32GPIOPin : public InternalGPIOPin {
  public:
@@ -19,6 +18,7 @@ class STM32GPIOPin : public InternalGPIOPin {
   optional<uint8_t> get_af() { return af_; }
   void set_inverted(bool inverted) { inverted_ = inverted; }
   void set_flags(gpio::Flags flags) { flags_ = flags; }
+  void set_port(GPIO_TypeDef *port) { port_ = port; }
 
   void setup() override { pin_mode(flags_); }
   void pin_mode(gpio::Flags flags) override;
@@ -34,6 +34,7 @@ class STM32GPIOPin : public InternalGPIOPin {
  protected:
   void attach_interrupt(void (*func)(void *), void *arg, gpio::InterruptType type) const override;
 
+  GPIO_TypeDef *port_;
   uint8_t pin_;
   optional<uint8_t> af_;
   bool inverted_;
