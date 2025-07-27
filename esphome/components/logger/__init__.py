@@ -210,7 +210,7 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(Logger),
             cv.GenerateID(CONF_UART_ID): cv.Any(
-                cv.All(cv.only_on([PLATFORM_STM32]), cv.use_id(uart.UARTComponent)),
+                cv.All(cv.only_on(PLATFORM_STM32), cv.use_id(uart.UARTComponent)),
                 None,
             ),
             cv.Optional(CONF_BAUD_RATE, default=115200): cv.positive_int,

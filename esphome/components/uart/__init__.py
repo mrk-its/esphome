@@ -255,9 +255,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_BAUD_RATE): cv.int_range(min=1),
             cv.Optional(CONF_TX_PIN): pins.internal_gpio_output_pin_schema,
             cv.Optional(CONF_RX_PIN): validate_rx_pin,
-            cv.Optional(CONF_PORT): cv.All(validate_port, cv.only_on([PLATFORM_HOST])),
+            cv.Optional(CONF_PORT): cv.All(validate_port, cv.only_on(PLATFORM_HOST)),
             cv.Optional(CONF_INSTANCE): cv.All(
-                validate_instance, cv.only_on([PLATFORM_STM32])
+                validate_instance, cv.only_on(PLATFORM_STM32)
             ),
             cv.Optional(CONF_RX_BUFFER_SIZE, default=256): cv.validate_bytes,
             cv.Optional(CONF_STOP_BITS, default=1): cv.one_of(1, 2, int=True),
