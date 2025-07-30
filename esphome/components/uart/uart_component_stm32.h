@@ -30,7 +30,7 @@ class STM32UARTComponent : public UARTComponent, public Component {
 
  protected:
   void check_logger_conflict() override {}
-  UART_HandleTypeDef uart_handle_;
+  UART_HandleTypeDef uart_handle_{0};
   std::string name_;
 };
 
