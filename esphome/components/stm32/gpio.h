@@ -1,5 +1,4 @@
 #pragma once
-
 #ifdef USE_STM32
 
 #include "esphome/core/hal.h"
@@ -39,6 +38,7 @@ class STM32GPIOPin : public InternalGPIOPin {
   optional<uint8_t> af_;
   bool inverted_;
   gpio::Flags flags_;
+  uint32_t isr_mode_{0};
 };
 
 }  // namespace stm32
