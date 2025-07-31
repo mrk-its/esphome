@@ -29,13 +29,13 @@ ISRInternalGPIOPin STM32GPIOPin::to_isr() const {
   return ISRInternalGPIOPin((void *) arg);
 }
 
-void _pin_mode(GPIO_TypeDef *port, uint8_t pin, gpio::Flags flags, optional<uint8_t> af, uint32_t isr_mode) {
+void _pin_mode(GPIO_TypeDef *port, uint8_t pin, gpio::Flags flags, optional<uint8_t> af, uint32_t interrupt_type) {
   uint8_t port_index = pin >> 4;
   uint16_t port_mask = 1 << port_index;
   GPIO_InitTypeDef GPIO_InitStruct;
   GPIO_InitStruct.Pin = pin_to_mask(pin);
   if (flags & gpio::Flags::FLAG_INPUT) {
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT | isr_mode;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT | interrupt_type;
   } else {
     if (!af) {
       GPIO_InitStruct.Mode = flags & gpio::Flags::FLAG_OPEN_DRAIN ? GPIO_MODE_OUTPUT_OD : GPIO_MODE_OUTPUT_PP;
@@ -67,16 +67,16 @@ void _digital_write(GPIO_TypeDef *port, uint8_t pin, bool value) {
 
 void STM32GPIOPin::attach_interrupt(void (*func)(void *), void *arg, gpio::InterruptType type) const {
   uint8_t pin_index = this->pin_ & 0x0f;
-  uint32_t isr_mode = 0;
+  uint32_t interrupt_type = 0;
   switch (type) {
     case gpio::INTERRUPT_RISING_EDGE:
-      isr_mode = this->inverted_ ? GPIO_MODE_IT_FALLING : GPIO_MODE_IT_RISING;
+      interrupt_type = this->inverted_ ? GPIO_MODE_IT_FALLING : GPIO_MODE_IT_RISING;
       break;
     case gpio::INTERRUPT_FALLING_EDGE:
-      isr_mode = this->inverted_ ? GPIO_MODE_IT_RISING : GPIO_MODE_IT_FALLING;
+      interrupt_type = this->inverted_ ? GPIO_MODE_IT_RISING : GPIO_MODE_IT_FALLING;
       break;
     case gpio::INTERRUPT_ANY_EDGE:
-      isr_mode = GPIO_MODE_IT_RISING_FALLING;
+      interrupt_type = GPIO_MODE_IT_RISING_FALLING;
       break;
     case gpio::INTERRUPT_LOW_LEVEL:
     case gpio::INTERRUPT_HIGH_LEVEL:
@@ -87,7 +87,7 @@ void STM32GPIOPin::attach_interrupt(void (*func)(void *), void *arg, gpio::Inter
 
   stm32_exti_set_handler(pin_index, func, arg);
 
-  _pin_mode(this->port_, this->pin_, this->flags_, this->af_, isr_mode);
+  _pin_mode(this->port_, this->pin_, this->flags_, this->af_, interrupt_type);
 }
 
 void STM32GPIOPin::pin_mode(gpio::Flags flags) { _pin_mode(this->port_, this->pin_, this->flags_, this->af_, 0); }
