@@ -194,14 +194,14 @@ canbus::Error STM32FDCan::send_message(struct canbus::CanFrame *frame) {
 const uint32_t RX_FIFO_IDS[] = {FDCAN_RX_FIFO0, FDCAN_RX_FIFO1};
 void STM32FDCan::push_can_frame(FDCAN_HandleTypeDef *hcan, struct canbus::CanFrame *frame) {
   if (&hcan_ == hcan) {
-    if (!rx_fifo.add(frame)) {
+    if (!rx_fifo_->add(frame)) {
       ESP_LOGW(TAG, "rx_fifo is full");
     }
   }
 }
 
 canbus::Error STM32FDCan::read_message(struct canbus::CanFrame *frame) {
-  return rx_fifo.get(frame) ? canbus::ERROR_OK : canbus::ERROR_NOMSG;
+  return rx_fifo_->get(frame) ? canbus::ERROR_OK : canbus::ERROR_NOMSG;
 };
 
 extern "C" void FDCAN1_IT0_IRQHandler(void) {
