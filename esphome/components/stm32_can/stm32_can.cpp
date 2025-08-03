@@ -53,7 +53,7 @@ bool STM32Can::setup_internal() {
   pcan->Init.AutoWakeUp = ENABLE;
   pcan->Init.AutoRetransmission = ENABLE;
   pcan->Init.ReceiveFifoLocked = DISABLE;
-  pcan->Init.TransmitFifoPriority = DISABLE;
+  pcan->Init.TransmitFifoPriority = ENABLE;
 
   uint32_t bitrate = CAN_BITRATES[bit_rate_];
   uint32_t pclk1_freq = HAL_RCC_GetPCLK1Freq();
