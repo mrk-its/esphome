@@ -112,7 +112,7 @@ bool STM32FDCan::setup_internal() {
 
     ESP_LOGI(TAG, "FDCAN: Initialized, state: %d, err: %lu", hcan_.State, hcan_.ErrorCode);
 
-    if (HAL_FDCAN_ActivateNotification(&hcan_, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) == HAL_OK) {
+    if (HAL_FDCAN_ActivateNotification(&hcan_, CAN_IT_RX_FIFO0_MSG_PENDING, 0) == HAL_OK) {
       ESP_LOGI(TAG, "rxfifo0 interrupt activated");
     } else {
       ESP_LOGE(TAG, "can't activate rxfifo0 interrupt");

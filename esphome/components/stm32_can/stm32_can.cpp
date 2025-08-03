@@ -3,8 +3,14 @@
 #include "esphome.h"
 #include "stm32_can.h"
 
+extern "C" {
+CAN_HandleTypeDef *hcan_ptr[2] = {nullptr, nullptr};
+}
+
 namespace esphome {
 namespace stm32_can {
+
+static std::vector<STM32Can *> can_instances;
 
 void STM32Can::setup() {
   ESP_LOGCONFIG(TAG, "Setting up STM32Can");
@@ -22,19 +28,32 @@ const uint32_t CAN_BITRATES[] = {
 static_assert((canbus::CanSpeed::CAN_1000KBPS + 1 == sizeof(CAN_BITRATES) / 4));
 
 bool STM32Can::setup_internal() {
-#if !defined(FDCAN1)
   CAN_FilterTypeDef filter = {0};
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-  hcan.Instance = CAN1;
-  hcan.Init.Mode = CAN_MODE_NORMAL;
-  hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeTriggeredMode = DISABLE;
-  hcan.Init.AutoBusOff = DISABLE;
-  hcan.Init.AutoWakeUp = DISABLE;
-  hcan.Init.AutoRetransmission = DISABLE;
-  hcan.Init.ReceiveFifoLocked = DISABLE;
-  hcan.Init.TransmitFifoPriority = DISABLE;
+  if (!can_instances.capacity()) {
+    can_instances.reserve(4);
+  }
+  can_instances.push_back(this);
+
+  auto pcan = &this->hcan_;
+
+  if (hcan_.Instance == CAN1) {
+    hcan_ptr[0] = pcan;
+  }
+#ifdef CAN2
+  if (hcan_.Instance == CAN2) {
+    hcan_ptr[1] = pcan;
+  }
+#endif
+
+  pcan->Init.Mode = CAN_MODE_NORMAL;
+  pcan->Init.SyncJumpWidth = CAN_SJW_1TQ;
+  pcan->Init.TimeTriggeredMode = DISABLE;
+  pcan->Init.AutoBusOff = DISABLE;
+  pcan->Init.AutoWakeUp = DISABLE;
+  pcan->Init.AutoRetransmission = DISABLE;
+  pcan->Init.ReceiveFifoLocked = DISABLE;
+  pcan->Init.TransmitFifoPriority = DISABLE;
 
   uint32_t bitrate = CAN_BITRATES[bit_rate_];
   uint32_t pclk1_freq = HAL_RCC_GetPCLK1Freq();
@@ -45,54 +64,36 @@ bool STM32Can::setup_internal() {
   }
   uint32_t prescaller_tq = pclk1_freq / bitrate;
   if (!(prescaller_tq % 16)) {
-    hcan.Init.Prescaler = prescaller_tq / 16;
-    hcan.Init.TimeSeg1 = CAN_BS1_13TQ;
-    hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
+    pcan->Init.Prescaler = prescaller_tq / 16;
+    pcan->Init.TimeSeg1 = CAN_BS1_13TQ;
+    pcan->Init.TimeSeg2 = CAN_BS2_2TQ;
   } else if (!(prescaller_tq % 8)) {
-    hcan.Init.Prescaler = prescaller_tq / 8;
-    hcan.Init.TimeSeg1 = CAN_BS1_6TQ;
-    hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
+    pcan->Init.Prescaler = prescaller_tq / 8;
+    pcan->Init.TimeSeg1 = CAN_BS1_6TQ;
+    pcan->Init.TimeSeg2 = CAN_BS2_1TQ;
   } else if (!(prescaller_tq % 4)) {
-    hcan.Init.Prescaler = prescaller_tq / 4;
-    hcan.Init.TimeSeg1 = CAN_BS1_2TQ;
-    hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
+    pcan->Init.Prescaler = prescaller_tq / 4;
+    pcan->Init.TimeSeg1 = CAN_BS1_2TQ;
+    pcan->Init.TimeSeg2 = CAN_BS2_1TQ;
   } else {
     ESP_LOGE(TAG, "cannot setup CAN timings for PCLK1 frequency: %lu Hz and bitrate: %lu bps", pclk1_freq, bitrate);
     return false;
   }
-  ESP_LOGCONFIG(TAG, "prescaller: %lu, tseg1: %lx, tseg2: %lx", hcan.Init.Prescaler, hcan.Init.TimeSeg1,
-                hcan.Init.TimeSeg2);
+  ESP_LOGCONFIG(TAG, "prescaller: %lu, tseg1: %lx, tseg2: %lx", pcan->Init.Prescaler, pcan->Init.TimeSeg1,
+                pcan->Init.TimeSeg2);
 
-  HAL_CAN_MspInit(&hcan);
+  HAL_CAN_MspInit(pcan);
   __HAL_RCC_CAN1_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
 
-  GPIO_InitStruct.Pin = GPIO_PIN_11;
+  HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
 
-  // cubemx code for F1 sets Mode=GPIO_MODE_INPUT;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-#ifdef GPIO_SPEED_HIGH
-  GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
-#endif
-#ifdef GPIO_AF9_CAN1
-  GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
-#endif
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  this->tx_pin_->setup();
+  this->rx_pin_->setup();
 
-  GPIO_InitStruct.Pin = GPIO_PIN_12;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-#ifdef GPIO_SPEED_HIGH
-  GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
-#endif
-#ifdef GPIO_AF9_CAN1
-  GPIO_InitStruct.Alternate = GPIO_AF9_CAN1;
-#endif
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-  if (HAL_CAN_Init(&hcan) == HAL_OK) {
+  if (HAL_CAN_Init(pcan) == HAL_OK) {
     // TODO: make sure ErrorCode is 0 and State is READY
-    ESP_LOGI(TAG, "CAN: Initialized, state: %d, err: %lu", hcan.State, hcan.ErrorCode);
+    ESP_LOGI(TAG, "CAN: Initialized, state: %d, err: %lu", pcan->State, pcan->ErrorCode);
 
     filter.FilterActivation = CAN_FILTER_ENABLE;
     filter.FilterScale = CAN_FILTERSCALE_16BIT;
@@ -105,78 +106,85 @@ bool STM32Can::setup_internal() {
     filter.FilterBank = 0;
     filter.SlaveStartFilterBank = 0;
 
-    if (HAL_CAN_ConfigFilter(&hcan, &filter) == HAL_OK) {
+    if (HAL_CAN_ConfigFilter(pcan, &filter) == HAL_OK) {
       ESP_LOGI(TAG, "CAN: filter configured");
     }
-    if (HAL_CAN_Start(&hcan) == HAL_OK) {
+    if (HAL_CAN_Start(pcan) == HAL_OK) {
       ESP_LOGI(TAG, "CAN: Started");
     } else {
       ESP_LOGE(TAG, "CAN: Can't start");
     }
     return true;
   }
-#else
-#warning TODO - add FDCAN support
-#endif
   return false;
 }
 
 canbus::Error STM32Can::send_message(struct canbus::CanFrame *frame) {
-#if !defined(FDCAN1)
   CAN_TxHeaderTypeDef TxHeader;
   uint32_t TxMailbox = 0;
+  auto pcan = &this->hcan_;
 
   TxHeader.StdId = frame->can_id;
   TxHeader.IDE = frame->use_extended_id ? CAN_ID_EXT : CAN_ID_STD;
   TxHeader.RTR = frame->remote_transmission_request ? CAN_RTR_REMOTE : CAN_RTR_DATA;
   TxHeader.DLC = frame->can_data_length_code;
 
-  uint32_t free_tx = HAL_CAN_GetTxMailboxesFreeLevel(&hcan);
+  uint32_t free_tx = HAL_CAN_GetTxMailboxesFreeLevel(pcan);
   if (!free_tx) {
     ESP_LOGE(TAG, "output queues are full");
     return canbus::ERROR_ALLTXBUSY;
   }
   ESP_LOGV(TAG, "free tx buffers: %ld", free_tx);
-  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, frame->data, &TxMailbox) == HAL_OK) {
-    ESP_LOGV(TAG, "message sent, state: %ld, err: %ld", hcan.State, hcan.ErrorCode);
+  if (HAL_CAN_AddTxMessage(pcan, &TxHeader, frame->data, &TxMailbox) == HAL_OK) {
+    ESP_LOGV(TAG, "message sent, state: %ld, err: %ld", pcan->State, pcan->ErrorCode);
   } else {
     ESP_LOGE(TAG, "can't send message");
   }
-#else
-#warning TODO - add FDCAN support
-#endif
 
   return canbus::ERROR_OK;
 };
 
+void STM32Can::push_can_frame(CAN_HandleTypeDef *hcan, struct canbus::CanFrame *frame) {
+  if (&hcan_ == hcan) {
+    if (!rx_fifo_->add(frame)) {
+      ESP_LOGW(TAG, "rx_fifo is full");
+    }
+  }
+}
+
 canbus::Error STM32Can::read_message(struct canbus::CanFrame *frame) {
-#if !defined(FDCAN1)
-  auto fifo0_cnt = HAL_CAN_GetRxFifoFillLevel(&hcan, 0);
-  auto fifo1_cnt = HAL_CAN_GetRxFifoFillLevel(&hcan, 1);
-  if (fifo1_cnt) {
-    ESP_LOGE(TAG, "not expected message in fifo #1");
-  }
-
-  CAN_RxHeaderTypeDef header;
-
-  if (fifo0_cnt && (HAL_CAN_GetRxMessage(&hcan, 0, &header, frame->data) == HAL_OK)) {
-    frame->can_id = header.StdId;
-    frame->use_extended_id = (header.IDE == CAN_ID_EXT);
-    frame->remote_transmission_request = (header.RTR == CAN_RTR_REMOTE);
-    frame->can_data_length_code = header.DLC;
-    ESP_LOGV(TAG, "fifo #0, received msg from %d, dlc: %d", header.StdId, header.DLC);
-    return canbus::ERROR_OK;
-  }
-
-  uint32_t err = HAL_CAN_GetError(&hcan);
-  if (err) {
-    ESP_LOGD(TAG, "err: %ld", err);
-  }
-#else
-#warning TODO - add FDCAN support
-#endif
-  return canbus::ERROR_NOMSG;
+  return rx_fifo_->get(frame) ? canbus::ERROR_OK : canbus::ERROR_NOMSG;
 };
+
+extern "C" void CAN1_IT0_IRQHandler(void) {
+  if (hcan_ptr[0]) {
+    HAL_CAN_IRQHandler(hcan_ptr[0]);
+  }
+}
+
+#ifdef CAN2
+extern "C" void CAN2_IT0_IRQHandler(void) {
+  if (hcan_ptr[1]) {
+    HAL_CAN_IRQHandler(hcan_ptr[1]);
+  }
+}
+#endif
+
+extern "C" void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+  CAN_RxHeaderTypeDef header;
+  esphome::canbus::CanFrame frame;
+
+  if (HAL_CAN_GetRxMessage(hcan, 0, &header, frame.data) == HAL_OK) {
+    frame.can_id = header.StdId;
+    frame.use_extended_id = (header.IDE == CAN_ID_EXT);
+    frame.remote_transmission_request = (header.RTR == CAN_RTR_REMOTE);
+    frame.can_data_length_code = header.DLC;
+    ESP_LOGV(TAG, "fifo #0, received msg from %d, dlc: %d", header.StdId, header.DLC);
+    for (auto it = can_instances.begin(); it != can_instances.end(); it++) {
+      (*it)->push_can_frame(hcan, &frame);
+    }
+  }
+}
 
 }  // namespace stm32_can
 }  // namespace esphome
