@@ -64,7 +64,7 @@ bool STM32FDCan::setup_internal() {
   hcan_.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hcan_.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
   hcan_.Init.Mode = FDCAN_MODE_NORMAL;
-  hcan_.Init.AutoRetransmission = DISABLE;
+  hcan_.Init.AutoRetransmission = ENABLE;
   hcan_.Init.TransmitPause = DISABLE;
   hcan_.Init.ProtocolException = DISABLE;
   hcan_.Init.StdFiltersNbr = 0;
@@ -188,6 +188,17 @@ canbus::Error STM32FDCan::send_message(struct canbus::CanFrame *frame) {
   } else {
     ESP_LOGE(TAG, "can't send message");
   }
+
+  FDCAN_ProtocolStatusTypeDef status;
+  if (HAL_FDCAN_GetProtocolStatus(&hcan_, &status) == HAL_OK) {
+    ESP_LOGD(TAG,
+             "Status, LastErrorCode: %d, DataLastErrorCode: %d, Activity: %d, ErrorPassive: %d, Warning: %d, BusOff %d,"
+             "  RxESIflag: %d, RxBRSflag: %d, RxFDFflag: %d, ProtocolException: %d, TDCvalue: %d",
+             status.LastErrorCode, status.DataLastErrorCode, status.Activity, status.ErrorPassive, status.Warning,
+             status.BusOff, status.RxESIflag, status.RxBRSflag, status.RxFDFflag, status.ProtocolException,
+             status.TDCvalue);
+  }
+
   return canbus::ERROR_OK;
 };
 
