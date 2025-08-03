@@ -49,9 +49,9 @@ bool STM32Can::setup_internal() {
   pcan->Init.Mode = CAN_MODE_NORMAL;
   pcan->Init.SyncJumpWidth = CAN_SJW_1TQ;
   pcan->Init.TimeTriggeredMode = DISABLE;
-  pcan->Init.AutoBusOff = DISABLE;
-  pcan->Init.AutoWakeUp = DISABLE;
-  pcan->Init.AutoRetransmission = DISABLE;
+  pcan->Init.AutoBusOff = ENABLE;
+  pcan->Init.AutoWakeUp = ENABLE;
+  pcan->Init.AutoRetransmission = ENABLE;
   pcan->Init.ReceiveFifoLocked = DISABLE;
   pcan->Init.TransmitFifoPriority = DISABLE;
 
