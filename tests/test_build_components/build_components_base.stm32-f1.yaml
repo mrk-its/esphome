@@ -1,0 +1,25 @@
+esphome:
+  name: componentteststm32f1
+  friendly_name: $component_name
+
+stm32:
+  board: genericSTM32F103C6
+
+uart:
+  - tx_pin:
+      number: PA9
+      af: 7
+    rx_pin:
+      number: PA10
+      af: 7
+    baud_rate: 115200
+    instance: USART1
+
+logger:
+  level: VERY_VERBOSE
+
+packages:
+  component_under_test: !include
+    file: $component_test_file
+    vars:
+      component_test_file: $component_test_file

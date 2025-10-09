@@ -1,4 +1,3 @@
-#include <cstdio>
 #include <cstring>
 #include "md5.h"
 #ifdef USE_MD5
