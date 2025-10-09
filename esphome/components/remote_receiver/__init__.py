@@ -209,6 +209,7 @@ FILTER_SOURCE_FILES = filter_source_files_from_platform(
             PlatformFramework.ESP32_IDF,
         },
         "remote_receiver.cpp": {
+            PlatformFramework.STM32,
             PlatformFramework.ESP8266_ARDUINO,
             PlatformFramework.BK72XX_ARDUINO,
             PlatformFramework.RTL87XX_ARDUINO,

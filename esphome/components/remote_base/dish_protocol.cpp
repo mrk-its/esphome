@@ -12,6 +12,8 @@ static const uint32_t BIT_HIGH_US = 400;
 static const uint32_t BIT_ONE_LOW_US = 1700;
 static const uint32_t BIT_ZERO_LOW_US = 2800;
 
+#define uint uint8_t
+
 void DishProtocol::encode(RemoteTransmitData *dst, const DishData &data) {
   dst->reserve(138);
   dst->set_carrier_frequency(57600);
