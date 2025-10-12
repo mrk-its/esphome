@@ -68,11 +68,11 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): _bus_declare_type,
-            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_pin_number,
+            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_output_pin_schema,
             cv.SplitDefault(CONF_SDA_PULLUP_ENABLED, esp32_idf=True): cv.All(
                 cv.only_with_esp_idf, cv.boolean
             ),
-            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_pin_number,
+            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_output_pin_schema,
             cv.Optional(CONF_INSTANCE): cv.All(
                 cv.only_on([PLATFORM_STM32]), i2c_instance
             ),
@@ -98,10 +98,16 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    cg.add(var.set_sda_pin(config[CONF_SDA]))
+    if CORE.is_stm32:
+        sda_pin = await cg.gpio_pin_expression(config[CONF_SDA])
+        cg.add(var.set_sda_pin(sda_pin))
+        scl_pin = await cg.gpio_pin_expression(config[CONF_SCL])
+        cg.add(var.set_scl_pin(scl_pin))
+    else:
+        cg.add(var.set_sda_pin(config[CONF_SDA]))
+        cg.add(var.set_scl_pin(config[CONF_SCL]))
     if CONF_SDA_PULLUP_ENABLED in config:
         cg.add(var.set_sda_pullup_enabled(config[CONF_SDA_PULLUP_ENABLED]))
-    cg.add(var.set_scl_pin(config[CONF_SCL]))
     if CONF_SCL_PULLUP_ENABLED in config:
         cg.add(var.set_scl_pullup_enabled(config[CONF_SCL_PULLUP_ENABLED]))
     if CONF_INSTANCE in config:

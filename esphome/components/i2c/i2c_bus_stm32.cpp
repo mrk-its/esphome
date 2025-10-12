@@ -9,6 +9,14 @@ static const char *const TAG = "i2c.stm32";
 void STM32I2CBus::setup() {
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
+  if (sda_pin_) {
+    sda_pin_->setup();
+  }
+
+  if (scl_pin_) {
+    scl_pin_->setup();
+  }
+
 #ifdef I2C1
   if (i2c_handle_.Instance == I2C1) {
 #ifdef RCC_PERIPHCLK_I2C1
@@ -45,15 +53,6 @@ void STM32I2CBus::setup() {
     __HAL_RCC_I2C3_CLK_ENABLE();
   }
 #endif
-
-  // TODO: determine af based on instance / pins?
-  sda_pin_.set_af(4);
-  scl_pin_.set_af(4);
-  scl_pin_.set_flags(gpio::Flags::FLAG_OPEN_DRAIN);
-  sda_pin_.set_flags(gpio::Flags::FLAG_OPEN_DRAIN);
-
-  sda_pin_.setup();
-  scl_pin_.setup();
 
 #if defined(F1) || defined(F)
   i2c_handle_.Init.ClockSpeed = this->frequency_;
@@ -100,68 +99,33 @@ void STM32I2CBus::setup() {
   }
 }
 
-#define I2C_BUF_LEN 1024
-
-ErrorCode STM32I2CBus::readv(uint8_t address, ReadBuffer *buffers, size_t cnt) {
-  if (cnt <= 1) {
-    if (HAL_I2C_Master_Receive(&i2c_handle_, address << 1, cnt ? buffers->data : nullptr, cnt ? buffers->len : 0, 20) ==
-        HAL_OK) {
+ErrorCode STM32I2CBus::write_readv(uint8_t address, const uint8_t *write_buffer, size_t write_count,
+                                   uint8_t *read_buffer, size_t read_count) {
+  if (read_count == 0 && write_count == 0) {
+    // ESP_LOGV(TAG, "probe address: %02x", address);
+    if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, nullptr, 0, 20) == HAL_OK) {
       return ERROR_OK;
     }
     return ERROR_NOT_ACKNOWLEDGED;
   }
-  size_t len = 0;
-  uint8_t buffer[I2C_BUF_LEN];
-
-  for (size_t i = 0; i < cnt; i++) {
-    len += buffers[i].len;
-  }
-  if (len > I2C_BUF_LEN) {
-    ESP_LOGE(TAG, "read buffer overflow");
-    return ERROR_UNKNOWN;
-  }
-  if (HAL_I2C_Master_Receive(&i2c_handle_, address << 1, buffer, len, 20) == HAL_OK) {
-    uint8_t *ptr = buffer;
-    for (size_t i = 0; i < cnt; i++) {
-      memcpy(buffers[i].data, ptr, buffers[i].len);
-      ptr += buffers[i].len;
+  // TODO: do read & write in single transaction
+  if (write_count) {
+    if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, (uint8_t *) write_buffer, write_count, 20) != HAL_OK) {
+      return ERROR_NOT_ACKNOWLEDGED;
     }
-    return ERROR_OK;
   }
-  return ERROR_NOT_ACKNOWLEDGED;
-}
-
-ErrorCode STM32I2CBus::writev(uint8_t address, WriteBuffer *buffers, size_t cnt, bool stop) {
-  uint32_t timeout_ms = (this->timeout_ ? this->timeout_ : 20000) / 1000;
-  if (cnt <= 1) {
-    if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, (uint8_t *) (cnt ? buffers->data : nullptr),
-                                cnt ? buffers->len : 0, timeout_ms) == HAL_OK) {
-      return ERROR_OK;
+  if (read_count) {
+    if (HAL_I2C_Master_Receive(&i2c_handle_, address << 1, (uint8_t *) read_buffer, read_count, 20) != HAL_OK) {
+      return ERROR_NOT_ACKNOWLEDGED;
     }
-    return ERROR_NOT_ACKNOWLEDGED;
   }
-  size_t len = 0;
-  uint8_t buffer[I2C_BUF_LEN];
-  while (cnt) {
-    if (I2C_BUF_LEN - len < buffers->len) {
-      ESP_LOGE(TAG, "write buffer overflow");
-      return ERROR_UNKNOWN;
-    }
-    memcpy(buffer + len, buffers->data, buffers->len);
-    len += buffers->len;
-    buffers++;
-    cnt--;
-  }
-  if (HAL_I2C_Master_Transmit(&i2c_handle_, address << 1, buffer, len, timeout_ms) == HAL_OK) {
-    return ERROR_OK;
-  }
-  return ERROR_NOT_ACKNOWLEDGED;
+  return ERROR_OK;
 }
 
 void STM32I2CBus::dump_config() {
   ESP_LOGCONFIG(TAG, "I2C Bus:");
-  LOG_PIN("  SDA Pin: ", &sda_pin_);
-  LOG_PIN("  SCL Pin: ", &scl_pin_);
+  LOG_PIN("  SDA Pin: ", sda_pin_);
+  LOG_PIN("  SCL Pin: ", scl_pin_);
   // ESP_LOGCONFIG(TAG, "  Frequency: %" PRIu32 " Hz", this->frequency_);
   if (timeout_ > 0) {
     ESP_LOGCONFIG(TAG, "  Timeout: %" PRIu32 "us", this->timeout_);
