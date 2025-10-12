@@ -3,7 +3,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
-#include "esphome/components/stm32/can_ring_buffer.h"
+#include "can_ring_buffer.h"
 
 namespace esphome {
 namespace stm32_fdcan {
