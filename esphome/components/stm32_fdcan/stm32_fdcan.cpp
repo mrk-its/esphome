@@ -184,7 +184,7 @@ canbus::Error STM32FDCan::send_message(struct canbus::CanFrame *frame) {
   ESP_LOGV(TAG, "free tx buffers: %ld", free_tx);
 
   if (HAL_FDCAN_AddMessageToTxFifoQ(&hcan_, &TxHeader, frame->data) == HAL_OK) {
-    ESP_LOGV(TAG, "message sent, state: %d, err: %ld", hcan.State, hcan.ErrorCode);
+    ESP_LOGV(TAG, "message sent, state: %d, err: %ld", hcan_.State, hcan_.ErrorCode);
   } else {
     ESP_LOGE(TAG, "can't send message");
   }
@@ -192,8 +192,9 @@ canbus::Error STM32FDCan::send_message(struct canbus::CanFrame *frame) {
   FDCAN_ProtocolStatusTypeDef status;
   if (HAL_FDCAN_GetProtocolStatus(&hcan_, &status) == HAL_OK) {
     ESP_LOGD(TAG,
-             "Status, LastErrorCode: %d, DataLastErrorCode: %d, Activity: %d, ErrorPassive: %d, Warning: %d, BusOff %d,"
-             "  RxESIflag: %d, RxBRSflag: %d, RxFDFflag: %d, ProtocolException: %d, TDCvalue: %d",
+             "Status, LastErrorCode: %ld, DataLastErrorCode: %ld, Activity: %ld, ErrorPassive: %ld, Warning: %ld, "
+             "BusOff %ld,"
+             "  RxESIflag: %ld, RxBRSflag: %ld, RxFDFflag: %ld, ProtocolException: %ld, TDCvalue: %ld",
              status.LastErrorCode, status.DataLastErrorCode, status.Activity, status.ErrorPassive, status.Warning,
              status.BusOff, status.RxESIflag, status.RxBRSflag, status.RxFDFflag, status.ProtocolException,
              status.TDCvalue);
