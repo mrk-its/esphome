@@ -34,7 +34,6 @@ bool STM32FDCan::setup_internal() {
   fdcan_instances.push_back(this);
 
   FDCAN_FilterTypeDef filter = {0};
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_FDCAN1;
@@ -67,12 +66,14 @@ bool STM32FDCan::setup_internal() {
   hcan_.Init.AutoRetransmission = ENABLE;
   hcan_.Init.TransmitPause = DISABLE;
   hcan_.Init.ProtocolException = DISABLE;
-  hcan_.Init.StdFiltersNbr = 0;
+  hcan_.Init.StdFiltersNbr = 1;
   hcan_.Init.ExtFiltersNbr = 0;
   hcan_.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
 
   // TODO - determine PLL1_FREQ runtime, from clock config
-  const uint32_t PLL1_FREQ = 80000000;
+  const uint32_t PLL1_FREQ = 80000000;  // HAL_RCC_GetPCLK1Freq();
+  ESP_LOGCONFIG(TAG, "PCLK1Freq: %lu", PLL1_FREQ);
+
   uint32_t bitrate = CAN_BITRATES[bit_rate_];
 
   for (uint32_t prescaller = 1; prescaller <= 512; prescaller++) {
@@ -112,13 +113,28 @@ bool STM32FDCan::setup_internal() {
 
     ESP_LOGI(TAG, "FDCAN: Initialized, state: %d, err: %lu", hcan_.State, hcan_.ErrorCode);
 
+    if (HAL_FDCAN_ExitPowerDownMode(&hcan_) == HAL_OK) {
+      ESP_LOGI(TAG, "FDCAN: no powerdown mode");
+    }
+
     if (HAL_FDCAN_ActivateNotification(&hcan_, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) == HAL_OK) {
       ESP_LOGI(TAG, "rxfifo0 interrupt activated");
     } else {
       ESP_LOGE(TAG, "can't activate rxfifo0 interrupt");
     }
 
-    if (HAL_FDCAN_ConfigGlobalFilter(&hcan_, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT, FDCAN_REJECT_REMOTE,
+    filter.IdType = FDCAN_STANDARD_ID;
+    filter.FilterIndex = 0;
+    filter.FilterType = FDCAN_FILTER_MASK;
+    filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+    filter.FilterID1 = 0;
+    filter.FilterID2 = 0;
+    if (HAL_FDCAN_ConfigFilter(&hcan_, &filter) == HAL_OK) {
+      ESP_LOGI(TAG, "filter configured");
+    } else {
+      ESP_LOGE(TAG, "can't configure filter");
+    }
+    if (HAL_FDCAN_ConfigGlobalFilter(&hcan_, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT_REMOTE,
                                      FDCAN_REJECT_REMOTE) != HAL_OK) {
       ESP_LOGE(TAG, "Can't configure global filter");
     } else {
@@ -129,8 +145,10 @@ bool STM32FDCan::setup_internal() {
       ESP_LOGI(TAG, "FDCAN: Started");
     }
 
-    if (on_initialized_) {
-      on_initialized_->trigger();
+    if (HAL_FDCAN_IsRestrictedOperationMode(&hcan_)) {
+      ESP_LOGI(TAG, "FDCAN: restricted operation mode");
+    } else {
+      ESP_LOGI(TAG, "FDCAN: normal operation mode");
     }
 
     return true;
@@ -141,9 +159,8 @@ static uint32_t last_millis = 0;
 
 void STM32FDCan::loop() {
   canbus::Canbus::loop();
-  return;
   uint32_t t = millis();
-  if (t - last_millis < 1000) {
+  if (t - last_millis < 5000) {
     return;
   }
   last_millis = t;

@@ -17,7 +17,7 @@ class STM32FDCan : public canbus::Canbus {
   friend void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs);
 
  public:
-  STM32FDCan() : hcan_{0}, tx_pin_{0}, rx_pin_{0}, on_initialized_{0} { rx_fifo_ = new stm32::CanFrameRingBuffer(31); }
+  STM32FDCan() : hcan_{0}, tx_pin_{0}, rx_pin_{0} { rx_fifo_ = new stm32::CanFrameRingBuffer(31); }
 
   void setup();
   // void loop() override;
@@ -25,7 +25,6 @@ class STM32FDCan : public canbus::Canbus {
   void set_rx_pin(InternalGPIOPin *rx_pin) { rx_pin_ = rx_pin; }
   void loop() override;
 
-  void add_trigger(OnInitializedTrigger *trigger) { on_initialized_ = trigger; }
   void set_instance(FDCAN_GlobalTypeDef *instance) { hcan_.Instance = instance; }
 
  protected:
@@ -38,7 +37,6 @@ class STM32FDCan : public canbus::Canbus {
   FDCAN_HandleTypeDef hcan_;
   InternalGPIOPin *tx_pin_;
   InternalGPIOPin *rx_pin_;
-  OnInitializedTrigger *on_initialized_;
   stm32::CanFrameRingBuffer *rx_fifo_;
 };
 }  // namespace stm32_fdcan
