@@ -107,6 +107,7 @@ void hal_init() {
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;  // Enable cycle counter
   }
 #endif
+  delay(100);
 }
 
 void init_uart() {}
