@@ -199,6 +199,19 @@ void Error_Handler(void) {
   while (1) {
   }
 }
+
+// ugly way of silenting compiler warnings about not implemented sysmbols
+// TODO - find better way or simply implement these functions
+void *_write = 0;
+void *_read = 0;
+void *_close = 0;
+void *_fstat = 0;
+void *_isatty = 0;
+void *_getpid = 0;
+void *_lseek = 0;
+void *_kill = 0;
+void *_gettimeofday = 0;
+
 }
 
 #endif  // USE_STM32
