@@ -80,7 +80,7 @@ void STM32UARTComponent::setup() {
   this->uart_handle_.Init.Mode = UART_MODE_TX_RX;
   this->uart_handle_.Init.OverSampling = UART_OVERSAMPLING_16;
 
-#ifdef U5
+#ifdef STM32U5
   this->rx_buffer_ = new uint8_t[this->rx_buffer_size_];
 
   this->uart_handle_.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
@@ -97,7 +97,7 @@ void STM32UARTComponent::setup() {
   }
 #endif
 
-#ifdef U5
+#ifdef STM32U5
   __HAL_RCC_GPDMA1_CLK_ENABLE();
 
   DMA_NodeConfTypeDef node_config;
