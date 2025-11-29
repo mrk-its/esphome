@@ -15,11 +15,11 @@ std::unique_ptr<ota::OTABackend> make_ota_backend() { return make_unique<ota::ST
 
 const uint32_t FLASH_BANK_MASK = (FLASH_BANK_SIZE - 1);  // for 512kb BANK
 const uint32_t FLASH_BANK2_ADDR = FLASH_BASE + FLASH_BANK_SIZE;
-#if defined(L4)
+#if defined(STM32L4)
 const uint32_t BLOCK_MASK = 7;
 #define HAL_FLASH_PROGRAM(dest_addr, src_addr) \
   HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, dest_addr, *((uint64_t *) src_addr))
-#elif defined(U5)
+#elif defined(STM32U5)
 const uint32_t BLOCK_MASK = 15;
 #define HAL_FLASH_PROGRAM(dest_addr, src_addr) \
   HAL_FLASH_Program(FLASH_TYPEPROGRAM_QUADWORD, dest_addr, (uint32_t) src_addr)
