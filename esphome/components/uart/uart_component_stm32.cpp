@@ -178,12 +178,12 @@ void STM32UARTComponent::write_array(const uint8_t *data, size_t len) {
 #endif
 }
 
-uint8_t STM32UARTComponent::get_tail_offset() {
+uint8_t STM32UARTComponent::get_tail_offset_() {
   return this->rx_buffer_size_ - __HAL_DMA_GET_COUNTER(this->uart_handle_.hdmarx);
 }
 
 bool STM32UARTComponent::peek_byte(uint8_t *data) {
-  size_t offs = this->get_tail_offset();
+  size_t offs = this->get_tail_offset_();
   if (offs != this->prev_rx_offset_) {
     *data = this->rx_buffer_[this->prev_rx_offset_];
     return true;
@@ -216,7 +216,7 @@ bool STM32UARTComponent::read_array(uint8_t *data, size_t len) {
 }
 
 int STM32UARTComponent::available() {
-  size_t offs = this->get_tail_offset();
+  size_t offs = this->get_tail_offset_();
   return (this->rx_buffer_size_ + offs - this->prev_rx_offset_) % this->rx_buffer_size_;
 }
 

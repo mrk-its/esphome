@@ -30,16 +30,16 @@ class STM32UARTComponent : public UARTComponent, public Component {
 
  protected:
   void check_logger_conflict() override {}
-  uint8_t get_tail_offset();
+  uint8_t get_tail_offset_();
 
-#ifdef U5
+#ifdef STM32U5
   DMA_NodeTypeDef dma_node_{0};
   DMA_HandleTypeDef dma_handle_{0};
   DMA_QListTypeDef dma_list_{0};
 #endif
 
   UART_HandleTypeDef uart_handle_{0};
-  uint8_t * rx_buffer_{0};
+  uint8_t *rx_buffer_{0};
   size_t prev_rx_offset_{0};
   std::string name_;
 };
