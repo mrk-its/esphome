@@ -30,6 +30,7 @@ class STM32UARTComponent : public UARTComponent, public Component {
 
  protected:
   void check_logger_conflict() override {}
+  uint8_t get_tail_offset();
 
 #ifdef U5
   DMA_NodeTypeDef dma_node_{0};
