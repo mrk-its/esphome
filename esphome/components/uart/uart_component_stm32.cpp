@@ -87,9 +87,13 @@ void STM32UARTComponent::setup() {
   this->uart_handle_.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   this->uart_handle_.Init.ClockPrescaler = UART_PRESCALER_DIV1;
   this->uart_handle_.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+#endif
+
   if (HAL_UART_Init(&this->uart_handle_) != HAL_OK) {
     Error_Handler();
   }
+
+#ifdef STM32U5
   if (HAL_UARTEx_SetRxFifoThreshold(&this->uart_handle_, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK) {
     Error_Handler();
   }
