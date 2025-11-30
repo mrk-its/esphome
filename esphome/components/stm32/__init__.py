@@ -20,6 +20,7 @@ from .const import (
     CONF_BOARD_SERIES,
     CONF_CLOCK,
     KEY_BOARD,
+    KEY_DMA_CHANNELS,
     KEY_GPIO_CLOCK_ENABLED,
     KEY_STM32,
     KEY_UART_INSTANCES,
@@ -38,6 +39,7 @@ def set_core_data(config):
     CORE.data[KEY_CORE][KEY_TARGET_PLATFORM] = PLATFORM_STM32
     CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK] = "stm32cube"
     CORE.data[KEY_STM32][KEY_BOARD] = config[CONF_BOARD]
+    CORE.data[KEY_STM32][CONF_BOARD_SERIES] = config[CONF_BOARD_SERIES]
 
     # TODO
     CORE.data[KEY_STM32][KEY_UART_INSTANCES] = [
@@ -48,6 +50,11 @@ def set_core_data(config):
         "UART5",
         "LPUART1",
     ]
+    if config[CONF_BOARD_SERIES] in ("F1",):
+        CORE.data[KEY_STM32][KEY_DMA_CHANNELS] = ["DMA1_Channel1"]
+    else:
+        CORE.data[KEY_STM32][KEY_DMA_CHANNELS] = ["GPDMA1_Channel1", "GPDMA1_Channel0"]
+
     CORE.data[KEY_STM32][KEY_GPIO_CLOCK_ENABLED] = set()
     return config
 

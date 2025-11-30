@@ -16,6 +16,8 @@ namespace uart {
 static const char *const TAG = "uart.stm32";
 
 void STM32UARTComponent::setup() {
+  this->rx_buffer_ = new uint8_t[this->rx_buffer_size_];
+
   if (this->tx_pin_) {
     this->tx_pin_->setup();
   }
@@ -81,7 +83,6 @@ void STM32UARTComponent::setup() {
   this->uart_handle_.Init.OverSampling = UART_OVERSAMPLING_16;
 
 #ifdef STM32U5
-  this->rx_buffer_ = new uint8_t[this->rx_buffer_size_];
 
   this->uart_handle_.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   this->uart_handle_.Init.ClockPrescaler = UART_PRESCALER_DIV1;
@@ -97,13 +98,32 @@ void STM32UARTComponent::setup() {
   }
 #endif
 
+#ifdef STM32F1
+  this->dma_handle_.Init.Direction = DMA_PERIPH_TO_MEMORY;
+  this->dma_handle_.Init.PeriphInc = DMA_PINC_DISABLE;
+  this->dma_handle_.Init.MemInc = DMA_MINC_ENABLE;
+  this->dma_handle_.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+  this->dma_handle_.Init.MemDataAlignment = DMA_PDATAALIGN_BYTE;
+  this->dma_handle_.Init.Mode = DMA_CIRCULAR;
+  this->dma_handle_.Init.Priority = DMA_PRIORITY_HIGH;
+  if (HAL_DMA_Init(&this->dma_handle_) != HAL_OK) {
+    Error_Handler();
+  }
+
+  __HAL_LINKDMA(&this->uart_handle_, hdmarx, this->dma_handle_);
+
+  if (HAL_UART_Receive_DMA(&this->uart_handle_, this->rx_buffer_, this->rx_buffer_size_) != HAL_OK) {
+    Error_Handler();
+  };
+#endif
+
 #ifdef STM32U5
   __HAL_RCC_GPDMA1_CLK_ENABLE();
 
   DMA_NodeConfTypeDef node_config;
 
   node_config.NodeType = DMA_GPDMA_LINEAR_NODE;
-  node_config.Init.Request = GPDMA1_REQUEST_UART4_RX;
+  node_config.Init.Request = this->dma_request_;
   node_config.Init.BlkHWRequest = DMA_BREQ_SINGLE_BURST;
   node_config.Init.Direction = DMA_PERIPH_TO_MEMORY;
   node_config.Init.SrcInc = DMA_SINC_FIXED;
@@ -131,7 +151,6 @@ void STM32UARTComponent::setup() {
     Error_Handler();
   }
 
-  this->dma_handle_.Instance = GPDMA1_Channel0;
   this->dma_handle_.InitLinkedList.Priority = DMA_LOW_PRIORITY_LOW_WEIGHT;
   this->dma_handle_.InitLinkedList.LinkStepMode = DMA_LSM_FULL_EXECUTION;
   this->dma_handle_.InitLinkedList.LinkAllocatedPort = DMA_LINK_ALLOCATED_PORT0;

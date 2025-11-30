@@ -333,9 +333,21 @@ async def to_code(config):
     if CONF_PORT in config:
         cg.add(var.set_name(config[CONF_PORT]))
     if CORE.is_stm32 and CONF_INSTANCE in config:
+        from esphome.components.stm32.const import (
+            KEY_BOARD_SERIES,
+            KEY_DMA_CHANNELS,
+            KEY_STM32,
+        )
+
         instance = config[CONF_INSTANCE]
         cg.add(var.set_name(instance))
         cg.add(var.set_instance(cg.RawExpression(instance)))
+        dma_channel = cv.CORE.data[KEY_STM32][KEY_DMA_CHANNELS].pop(0)
+        cg.add(var.set_dma_channel(cg.RawExpression(dma_channel)))
+        if cv.CORE.data[KEY_STM32][KEY_BOARD_SERIES] not in ("F1",):
+            cg.add(
+                var.set_dma_request(cg.RawExpression(f"GPDMA1_REQUEST_{instance}_RX"))
+            )
         cg.add(cg.RawExpression(f"__HAL_RCC_{instance}_CLK_ENABLE()"))
     cg.add(var.set_rx_buffer_size(config[CONF_RX_BUFFER_SIZE]))
     if CORE.is_esp32:
