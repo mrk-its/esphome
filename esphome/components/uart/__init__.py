@@ -344,7 +344,7 @@ async def to_code(config):
         cg.add(var.set_instance(cg.RawExpression(instance)))
         dma_channel = cv.CORE.data[KEY_STM32][KEY_DMA_CHANNELS].pop(0)
         cg.add(var.set_dma_channel(cg.RawExpression(dma_channel)))
-        if cv.CORE.data[KEY_STM32][KEY_BOARD_SERIES] not in ("F1",):
+        if cv.CORE.data[KEY_STM32][KEY_BOARD_SERIES] in ("U5",):
             cg.add(
                 var.set_dma_request(cg.RawExpression(f"GPDMA1_REQUEST_{instance}_RX"))
             )

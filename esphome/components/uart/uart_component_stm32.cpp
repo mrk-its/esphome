@@ -98,7 +98,8 @@ void STM32UARTComponent::setup() {
   }
 #endif
 
-#ifdef STM32F1
+#if defined(STM32F1) || defined(STM32L4)
+  __HAL_RCC_DMA1_CLK_ENABLE();
   this->dma_handle_.Init.Direction = DMA_PERIPH_TO_MEMORY;
   this->dma_handle_.Init.PeriphInc = DMA_PINC_DISABLE;
   this->dma_handle_.Init.MemInc = DMA_MINC_ENABLE;
