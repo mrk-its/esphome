@@ -95,5 +95,6 @@ async def to_code(config):
     cg.add_platformio_option("upload_protocol", "stlink")
 
     if CONF_CLOCK not in config:
-        _LOGGER.warning("no clock configuraton, add 'config:' to generate default one")
+        _LOGGER.warning("no clock configuraton, add 'clock:' to generate default one")
+
     generate_clock_config(config)
