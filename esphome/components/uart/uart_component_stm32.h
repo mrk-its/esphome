@@ -32,7 +32,7 @@ class STM32UARTComponent : public UARTComponent, public Component {
 
  protected:
   void check_logger_conflict() override {}
-  uint8_t get_tail_offset_();
+  size_t get_tail_offset_();
 
   DMA_HandleTypeDef dma_handle_{0};
   uint32_t dma_request_;

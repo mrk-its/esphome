@@ -50,10 +50,12 @@ def set_core_data(config):
         "UART5",
         "LPUART1",
     ]
-    if config[CONF_BOARD_SERIES] in ("F1", "L4"):
+    if config[CONF_BOARD_SERIES] in ("L4",):
         CORE.data[KEY_STM32][KEY_DMA_CHANNELS] = ["DMA1_Channel1", "DMA1_Channel2"]
-    else:
+    elif config[CONF_BOARD_SERIES] in ("U3", "U5"):
         CORE.data[KEY_STM32][KEY_DMA_CHANNELS] = ["GPDMA1_Channel1", "GPDMA1_Channel0"]
+    else:
+        CORE.data[KEY_STM32][KEY_DMA_CHANNELS] = []
 
     CORE.data[KEY_STM32][KEY_GPIO_CLOCK_ENABLED] = set()
     return config

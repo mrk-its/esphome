@@ -16,8 +16,6 @@ namespace uart {
 static const char *const TAG = "uart.stm32";
 
 void STM32UARTComponent::setup() {
-  this->rx_buffer_ = new uint8_t[this->rx_buffer_size_];
-
   if (this->tx_pin_) {
     this->tx_pin_->setup();
   }
@@ -101,6 +99,13 @@ void STM32UARTComponent::setup() {
     Error_Handler();
   }
 #endif
+
+  if (!this->rx_buffer_size_) {
+    // no rx_buffer_size_, skip DMA setup
+    return;
+  }
+
+  this->rx_buffer_ = new uint8_t[this->rx_buffer_size_];
 
 #if defined(STM32F1) || defined(STM32L4)
   __HAL_RCC_DMA1_CLK_ENABLE();
@@ -200,7 +205,11 @@ void STM32UARTComponent::write_array(const uint8_t *data, size_t len) {
 #endif
 }
 
-uint8_t STM32UARTComponent::get_tail_offset_() {
+size_t STM32UARTComponent::get_tail_offset_() {
+  if (!this->rx_buffer_size_) {
+    // no rx_buffer, DMA is disabled, so always return 0
+    return 0;
+  }
   return this->rx_buffer_size_ - __HAL_DMA_GET_COUNTER(this->uart_handle_.hdmarx);
 }
 
@@ -216,6 +225,11 @@ bool STM32UARTComponent::peek_byte(uint8_t *data) {
 bool STM32UARTComponent::read_array(uint8_t *data, size_t len) {
   uint8_t *dest_ptr = data;
   size_t remaining = len;
+
+  if (!this->rx_buffer_size_) {
+    // no rx_buffer, DMA is disabled - so fail
+    return false;
+  }
 
   while (remaining > 0) {
     size_t end_offset = std::min(this->prev_rx_offset_ + this->available(), this->rx_buffer_size_);
@@ -238,6 +252,9 @@ bool STM32UARTComponent::read_array(uint8_t *data, size_t len) {
 }
 
 int STM32UARTComponent::available() {
+  if (!this->rx_buffer_size_) {
+    return 0;
+  }
   size_t offs = this->get_tail_offset_();
   return (this->rx_buffer_size_ + offs - this->prev_rx_offset_) % this->rx_buffer_size_;
 }

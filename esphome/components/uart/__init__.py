@@ -342,7 +342,12 @@ async def to_code(config):
         instance = config[CONF_INSTANCE]
         cg.add(var.set_name(instance))
         cg.add(var.set_instance(cg.RawExpression(instance)))
-        dma_channel = cv.CORE.data[KEY_STM32][KEY_DMA_CHANNELS].pop(0)
+        if cv.CORE.data[KEY_STM32][KEY_BOARD_SERIES] in ("F1",):
+            dma_channel = {"USART1": "DMA1_Channel5", "USART2": "DMA1_Channel6"}[
+                instance
+            ]
+        else:
+            dma_channel = cv.CORE.data[KEY_STM32][KEY_DMA_CHANNELS].pop(0)
         cg.add(var.set_dma_channel(cg.RawExpression(dma_channel)))
         if cv.CORE.data[KEY_STM32][KEY_BOARD_SERIES] in ("U5",):
             cg.add(
