@@ -1,0 +1,44 @@
+#pragma once
+#ifdef USE_STM32
+
+#include "esphome/core/component.h"
+#include "esphome/core/defines.h"
+#include "can_ring_buffer.h"
+
+namespace esphome {
+namespace stm32_fdcan {
+const char *const TAG = "stm32_fdcan";
+
+extern "C" void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs);
+
+class OnInitializedTrigger : public Trigger<> {};
+
+class STM32FDCan : public canbus::Canbus {
+  friend void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs);
+
+ public:
+  STM32FDCan() : hcan_{0}, tx_pin_{0}, rx_pin_{0} { rx_fifo_ = new stm32::CanFrameRingBuffer(31); }
+
+  void setup();
+  // void loop() override;
+  void set_tx_pin(InternalGPIOPin *tx_pin) { tx_pin_ = tx_pin; }
+  void set_rx_pin(InternalGPIOPin *rx_pin) { rx_pin_ = rx_pin; }
+  void loop() override;
+
+  void set_instance(FDCAN_GlobalTypeDef *instance) { hcan_.Instance = instance; }
+
+ protected:
+  bool setup_internal() override;
+  canbus::Error send_message(struct canbus::CanFrame *frame) override;
+  canbus::Error read_message(struct canbus::CanFrame *frame) override;
+  void push_can_frame(FDCAN_HandleTypeDef *hcan, struct canbus::CanFrame *frame);
+
+ private:
+  FDCAN_HandleTypeDef hcan_;
+  InternalGPIOPin *tx_pin_;
+  InternalGPIOPin *rx_pin_;
+  stm32::CanFrameRingBuffer *rx_fifo_;
+};
+}  // namespace stm32_fdcan
+}  // namespace esphome
+#endif

@@ -20,6 +20,83 @@ uint64_t get_dwt_cycle_cnt() {
 }
 #endif
 
+uint8_t get_active_flash_bank() {
+#if defined(FLASH_BANK_2) && defined(OB_BFB2_ENABLE)
+  volatile uint32_t remap = READ_BIT(SYSCFG->MEMRMP, 0x1 << 8);
+  return remap == 0 ? FLASH_BANK_1 : FLASH_BANK_2;
+#elif defined(FLASH_BANK_2) && defined(OB_USER_BANK_SWAP)
+#error GO - TODO!
+  return 0;
+#elif OB_SWAP_BANK_ENABLE
+  FLASH_OBProgramInitTypeDef ob_config = {0};
+  HAL_FLASHEx_OBGetConfig(&ob_config);
+  bool swapped = (ob_config.USERConfig & OB_SWAP_BANK_ENABLE) > 0;
+  return swapped ? FLASH_BANK_2 : FLASH_BANK_1;
+#else
+  return 0;
+#endif
+}
+
+void swap_flash_banks() {
+#if defined(FLASH_BANK_2) && defined(OB_BFB2_ENABLE)
+  FLASH_OBProgramInitTypeDef ob_config = {0};
+  HAL_FLASHEx_OBGetConfig(&ob_config);
+
+  if (get_active_flash_bank() == FLASH_BANK_1) {
+    ob_config.USERConfig |= OB_BFB2_ENABLE;
+  } else {
+    ob_config.USERConfig &= ~OB_BFB2_ENABLE;
+  }
+
+  ob_config.OptionType = OPTIONBYTE_USER;
+  ob_config.USERType = OB_USER_BFB2;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASH_OB_Unlock();
+  HAL_FLASHEx_OBProgram(&ob_config);
+  HAL_FLASH_OB_Launch();
+  HAL_FLASH_OB_Lock();
+#elif defined(U5)
+  FLASH_OBProgramInitTypeDef ob_config = {0};
+  HAL_FLASHEx_OBGetConfig(&ob_config);
+
+  if (get_active_flash_bank() == FLASH_BANK_1) {
+    ob_config.USERConfig |= OB_SWAP_BANK_ENABLE;
+  } else {
+    ob_config.USERConfig &= ~OB_SWAP_BANK_ENABLE;
+  }
+
+  ob_config.OptionType = OPTIONBYTE_USER;
+  ob_config.USERType = OB_USER_SWAP_BANK;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASH_OB_Unlock();
+  HAL_FLASHEx_OBProgram(&ob_config);
+  HAL_FLASH_OB_Launch();
+  HAL_FLASH_OB_Lock();
+#elif defined(FLASH_BANK_2) && defined(OB_USER_BANK_SWAP)
+#error G0 - TODO!
+#endif
+}
+
+void log_clock_config() {
+  uint32_t sysClockFreq = HAL_RCC_GetSysClockFreq();
+  uint32_t hclkFreq = HAL_RCC_GetHCLKFreq();
+
+  ESP_LOGI(TAG, "--- Clock Configuration ---");
+  ESP_LOGI(TAG, "System Clock Frequency (SYSCLK): %lu Hz (max: %lu Hz)", sysClockFreq, F_CPU);
+  ESP_LOGI(TAG, "HSE Frequency: %u Hz", HSE_VALUE);
+  ESP_LOGI(TAG, "HCLK Frequency (AHB Bus): %lu Hz", hclkFreq);
+#ifdef HAL_RCC_GetPCLK1Freq
+  uint32_t pclk1Freq = HAL_RCC_GetPCLK1Freq();
+  ESP_LOGI(TAG, "PCLK1 Frequency (APB1 Bus): %lu Hz", pclk1Freq);
+#endif
+#ifdef HAL_RCC_GetPCLK2Freq
+  uint32_t pclk2Freq = HAL_RCC_GetPCLK2Freq();
+  ESP_LOGI(TAG, "PCLK2 Frequency (APB2 Bus): %lu Hz", pclk2Freq);
+#endif
+}
+
 void hal_init() {
   HAL_Init();
 #if (__CORTEX_M >= 0x03)
@@ -32,6 +109,7 @@ void hal_init() {
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;  // Enable cycle counter
   }
 #endif
+  delay(500);
 }
 
 void init_uart() {}
@@ -104,6 +182,11 @@ int main() {
 
   setup();
 
+  esphome::stm32::log_clock_config();
+#if defined(FLASH_BANK_2)
+  ESP_LOGI(TAG, "Active flash bank: %d", ::esphome::stm32::get_active_flash_bank());
+#endif
+
   while (1) {
     loop();
   }
@@ -116,6 +199,19 @@ void Error_Handler(void) {
   while (1) {
   }
 }
+
+// ugly way of silenting compiler warnings about not implemented sysmbols
+// TODO - find better way or simply implement these functions
+void *_write = 0;
+void *_read = 0;
+void *_close = 0;
+void *_fstat = 0;
+void *_isatty = 0;
+void *_getpid = 0;
+void *_lseek = 0;
+void *_kill = 0;
+void *_gettimeofday = 0;
+
 }
 
 #endif  // USE_STM32

@@ -18,6 +18,9 @@ uint8_t progmem_read_byte(const uint8_t *addr);
 
 namespace stm32 {
 void hal_init();
+void log_clock_config();
+uint8_t get_active_flash_bank();
+void swap_flash_banks();
 
 }  // namespace stm32
 

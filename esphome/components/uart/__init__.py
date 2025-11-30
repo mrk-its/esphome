@@ -1,3 +1,4 @@
+from logging import getLogger
 import math
 import re
 
@@ -33,9 +34,11 @@ from esphome.const import (
     PLATFORM_STM32,
     PlatformFramework,
 )
-from esphome.core import CORE
+from esphome.core import CORE, ID
 import esphome.final_validate as fv
 from esphome.yaml_util import make_data_base
+
+_LOGGER = getLogger(__name__)
 
 CODEOWNERS = ["@esphome/core"]
 uart_ns = cg.esphome_ns.namespace("uart")
@@ -133,6 +136,21 @@ def validate_host_config(config):
             raise cv.Invalid(
                 f"Host platform doesn't support baud rate {config[CONF_BAUD_RATE]}",
                 path=[CONF_BAUD_RATE],
+            )
+    return config
+
+
+def validate_rx_buffer_size(config):
+    if CORE.is_esp32:
+        # ESP32 UART hardware FIFO is 128 bytes (LP UART is 16 bytes, but we use 128 as safe minimum)
+        # rx_buffer_size must be greater than the hardware FIFO length
+        min_buffer_size = 128
+        if config[CONF_RX_BUFFER_SIZE] <= min_buffer_size:
+            _LOGGER.warning(
+                "UART rx_buffer_size (%d bytes) is too small and must be greater than the hardware "
+                "FIFO size (%d bytes). The buffer size will be automatically adjusted at runtime.",
+                config[CONF_RX_BUFFER_SIZE],
+                min_buffer_size,
             )
     return config
 
@@ -267,6 +285,7 @@ CONFIG_SCHEMA = cv.All(
     ).extend(cv.COMPONENT_SCHEMA),
     cv.has_at_least_one_key(CONF_TX_PIN, CONF_RX_PIN, CONF_PORT),
     validate_host_config,
+    validate_rx_buffer_size,
 )
 
 
@@ -314,9 +333,21 @@ async def to_code(config):
     if CONF_PORT in config:
         cg.add(var.set_name(config[CONF_PORT]))
     if CORE.is_stm32 and CONF_INSTANCE in config:
+        from esphome.components.stm32.const import (
+            KEY_BOARD_SERIES,
+            KEY_DMA_CHANNELS,
+            KEY_STM32,
+        )
+
         instance = config[CONF_INSTANCE]
         cg.add(var.set_name(instance))
         cg.add(var.set_instance(cg.RawExpression(instance)))
+        dma_channel = cv.CORE.data[KEY_STM32][KEY_DMA_CHANNELS].pop(0)
+        cg.add(var.set_dma_channel(cg.RawExpression(dma_channel)))
+        if cv.CORE.data[KEY_STM32][KEY_BOARD_SERIES] in ("U5",):
+            cg.add(
+                var.set_dma_request(cg.RawExpression(f"GPDMA1_REQUEST_{instance}_RX"))
+            )
         cg.add(cg.RawExpression(f"__HAL_RCC_{instance}_CLK_ENABLE()"))
     cg.add(var.set_rx_buffer_size(config[CONF_RX_BUFFER_SIZE]))
     if CORE.is_esp32:
@@ -372,7 +403,7 @@ def final_validate_device_schema(
 
     def validate_pin(opt, device):
         def validator(value):
-            if opt in device:
+            if opt in device and not CORE.testing_mode:
                 raise cv.Invalid(
                     f"The uart {opt} is used both by {name} and {device[opt]}, "
                     f"but can only be used by one. Please create a new uart bus for {name}."
@@ -471,7 +502,10 @@ async def uart_write_to_code(config, action_id, template_arg, args):
         templ = await cg.templatable(data, args, cg.std_vector.template(cg.uint8))
         cg.add(var.set_data_template(templ))
     else:
-        cg.add(var.set_data_static(data))
+        # Generate static array in flash to avoid RAM copy
+        arr_id = ID(f"{action_id}_data", is_declaration=True, type=cg.uint8)
+        arr = cg.static_const_array(arr_id, cg.ArrayInitializer(*data))
+        cg.add(var.set_data_static(arr, len(data)))
     return var
 
 

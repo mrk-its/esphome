@@ -2,23 +2,34 @@ import logging
 
 from esphome import pins
 import esphome.codegen as cg
+from esphome.components.zephyr import (
+    zephyr_add_overlay,
+    zephyr_add_prj_conf,
+    zephyr_data,
+)
+from esphome.components.zephyr.const import KEY_BOARD
 from esphome.config_helpers import filter_source_files_from_platform
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_ADDRESS,
     CONF_FREQUENCY,
+    CONF_I2C,
     CONF_I2C_ID,
     CONF_ID,
+    CONF_INSTANCE,
     CONF_SCAN,
     CONF_SCL,
     CONF_SDA,
     CONF_TIMEOUT,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
+    PLATFORM_NRF52,
     PLATFORM_RP2040,
+    PLATFORM_STM32,
     PlatformFramework,
 )
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
+from esphome.cpp_generator import MockObj
 import esphome.final_validate as fv
 
 LOGGER = logging.getLogger(__name__)
@@ -28,7 +39,9 @@ I2CBus = i2c_ns.class_("I2CBus")
 InternalI2CBus = i2c_ns.class_("InternalI2CBus", I2CBus)
 ArduinoI2CBus = i2c_ns.class_("ArduinoI2CBus", InternalI2CBus, cg.Component)
 IDFI2CBus = i2c_ns.class_("IDFI2CBus", InternalI2CBus, cg.Component)
+ZephyrI2CBus = i2c_ns.class_("ZephyrI2CBus", I2CBus, cg.Component)
 I2CDevice = i2c_ns.class_("I2CDevice")
+STM32I2CBus = i2c_ns.class_("STM32I2CBus", I2CBus, cg.Component)
 
 
 CONF_SDA_PULLUP_ENABLED = "sda_pullup_enabled"
@@ -41,6 +54,10 @@ def _bus_declare_type(value):
         return cv.declare_id(ArduinoI2CBus)(value)
     if CORE.using_esp_idf:
         return cv.declare_id(IDFI2CBus)(value)
+    if CORE.is_stm32:
+        return cv.declare_id(STM32I2CBus)(value)
+    if CORE.using_zephyr:
+        return cv.declare_id(ZephyrI2CBus)(value)
     raise NotImplementedError
 
 
@@ -50,44 +67,110 @@ def validate_config(config):
     return config
 
 
+I2C_INSTANCES = ("I2C1", "I2C2", "I2C3")
+
+
+def i2c_instance(value):
+    if value not in I2C_INSTANCES:
+        raise cv.Invalid(f"invalid I2C instance, must be one of {I2C_INSTANCES}")
+    return cv.string(value)
+
+
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): _bus_declare_type,
-            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_pin_number,
+            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_output_pin_schema,
             cv.SplitDefault(CONF_SDA_PULLUP_ENABLED, esp32_idf=True): cv.All(
                 cv.only_with_esp_idf, cv.boolean
             ),
-            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_pin_number,
+            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_output_pin_schema,
+            cv.Optional(CONF_INSTANCE): cv.All(
+                cv.only_on([PLATFORM_STM32]), i2c_instance
+            ),
             cv.SplitDefault(CONF_SCL_PULLUP_ENABLED, esp32_idf=True): cv.All(
                 cv.only_with_esp_idf, cv.boolean
             ),
-            cv.Optional(CONF_FREQUENCY, default="50kHz"): cv.All(
-                cv.frequency, cv.Range(min=0, min_included=False)
+            cv.SplitDefault(
+                CONF_FREQUENCY,
+                esp32="50kHz",
+                esp8266="50kHz",
+                rp2040="50kHz",
+                nrf52="100kHz",
+            ): cv.All(
+                cv.frequency,
+                cv.Range(min=0, min_included=False),
             ),
-            cv.Optional(CONF_TIMEOUT): cv.positive_time_period,
+            cv.Optional(CONF_TIMEOUT): cv.All(
+                cv.only_with_framework(["arduino", "esp-idf"]),
+                cv.positive_time_period,
+            ),
             cv.Optional(CONF_SCAN, default=True): cv.boolean,
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040]),
+    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040, PLATFORM_NRF52, PLATFORM_STM32]),
     validate_config,
 )
+
+
+def _final_validate(config):
+    full_config = fv.full_config.get()[CONF_I2C]
+    if CORE.using_zephyr and len(full_config) > 1:
+        raise cv.Invalid("Second i2c is not implemented on Zephyr yet")
+
+
+FINAL_VALIDATE_SCHEMA = _final_validate
 
 
 @coroutine_with_priority(CoroPriority.BUS)
 async def to_code(config):
     cg.add_global(i2c_ns.using)
     cg.add_define("USE_I2C")
-    var = cg.new_Pvariable(config[CONF_ID])
+    if CORE.using_zephyr:
+        zephyr_add_prj_conf("I2C", True)
+        i2c = "i2c0"
+        if zephyr_data()[KEY_BOARD] in ["xiao_ble"]:
+            i2c = "i2c1"
+        zephyr_add_overlay(
+            f"""
+                &pinctrl {{
+                    {i2c}_default: {i2c}_default {{
+                        group1 {{
+                            psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
+                                <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
+                        }};
+                    }};
+                    {i2c}_sleep: {i2c}_sleep {{
+                        group1 {{
+                            psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
+                                <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
+                            low-power-enable;
+                        }};
+                    }};
+                }};
+            """
+        )
+        var = cg.new_Pvariable(
+            config[CONF_ID], MockObj(f"DEVICE_DT_GET(DT_NODELABEL({i2c}))")
+        )
+    else:
+        var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    cg.add(var.set_sda_pin(config[CONF_SDA]))
+    if CORE.is_stm32:
+        sda_pin = await cg.gpio_pin_expression(config[CONF_SDA])
+        cg.add(var.set_sda_pin(sda_pin))
+        scl_pin = await cg.gpio_pin_expression(config[CONF_SCL])
+        cg.add(var.set_scl_pin(scl_pin))
+    else:
+        cg.add(var.set_sda_pin(config[CONF_SDA]))
+        cg.add(var.set_scl_pin(config[CONF_SCL]))
     if CONF_SDA_PULLUP_ENABLED in config:
         cg.add(var.set_sda_pullup_enabled(config[CONF_SDA_PULLUP_ENABLED]))
-    cg.add(var.set_scl_pin(config[CONF_SCL]))
     if CONF_SCL_PULLUP_ENABLED in config:
         cg.add(var.set_scl_pullup_enabled(config[CONF_SCL_PULLUP_ENABLED]))
-
+    if CONF_INSTANCE in config:
+        cg.add(var.set_instance(cg.RawExpression(config[CONF_INSTANCE])))
     cg.add(var.set_frequency(int(config[CONF_FREQUENCY])))
     cg.add(var.set_scan(config[CONF_SCAN]))
     if CONF_TIMEOUT in config:
@@ -197,5 +280,6 @@ FILTER_SOURCE_FILES = filter_source_files_from_platform(
             PlatformFramework.LN882X_ARDUINO,
         },
         "i2c_bus_esp_idf.cpp": {PlatformFramework.ESP32_IDF},
+        "i2c_bus_zephyr.cpp": {PlatformFramework.NRF52_ZEPHYR},
     }
 )

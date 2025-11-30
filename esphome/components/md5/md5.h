@@ -25,6 +25,15 @@
 #define MD5_CTX_TYPE LT_MD5_CTX_T
 #endif
 
+#if defined(USE_STM32)
+#include "esphome/components/stm32/core.h"
+struct MD5_CTX_TYPE {
+  HASH_HandleTypeDef handle;
+  uint8_t buf[4];
+  uint8_t buf_len;
+};
+#endif
+
 namespace esphome {
 namespace md5 {
 

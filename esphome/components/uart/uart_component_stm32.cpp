@@ -16,22 +16,23 @@ namespace uart {
 static const char *const TAG = "uart.stm32";
 
 void STM32UARTComponent::setup() {
+  this->rx_buffer_ = new uint8_t[this->rx_buffer_size_];
+
   if (this->tx_pin_) {
     this->tx_pin_->setup();
   }
   if (this->rx_pin_) {
     this->rx_pin_->setup();
   }
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
-#ifdef RCC_PERIPHCLK_USART1
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
-#endif
-
-#ifdef RCC_USART1CLKSOURCE_SYSCLK
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_SYSCLK;
-#endif
-  HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
+  // RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+  // PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_UART4;
+  // // PeriphClkInit.Uart4ClockSelection = RCC_UART4CLKSOURCE_SYSCLK;
+  // PeriphClkInit.Uart4ClockSelection = RCC_UART4CLKSOURCE_PCLK1;
+  //
+  // if(HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit)!=HAL_OK) {
+  //   Error_Handler();
+  // }
 
   this->uart_handle_.Init.BaudRate = baud_rate_;
   switch (data_bits_) {
@@ -81,9 +82,101 @@ void STM32UARTComponent::setup() {
   this->uart_handle_.Init.Mode = UART_MODE_TX_RX;
   this->uart_handle_.Init.OverSampling = UART_OVERSAMPLING_16;
 
+#ifdef STM32U5
+
+  this->uart_handle_.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  this->uart_handle_.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  this->uart_handle_.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
   if (HAL_UART_Init(&this->uart_handle_) != HAL_OK) {
     Error_Handler();
   }
+  if (HAL_UARTEx_SetRxFifoThreshold(&this->uart_handle_, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK) {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_EnableFifoMode(&this->uart_handle_) != HAL_OK) {
+    Error_Handler();
+  }
+#endif
+
+#if defined(STM32F1) || defined(STM32L4)
+  __HAL_RCC_DMA1_CLK_ENABLE();
+  this->dma_handle_.Init.Direction = DMA_PERIPH_TO_MEMORY;
+  this->dma_handle_.Init.PeriphInc = DMA_PINC_DISABLE;
+  this->dma_handle_.Init.MemInc = DMA_MINC_ENABLE;
+  this->dma_handle_.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+  this->dma_handle_.Init.MemDataAlignment = DMA_PDATAALIGN_BYTE;
+  this->dma_handle_.Init.Mode = DMA_CIRCULAR;
+  this->dma_handle_.Init.Priority = DMA_PRIORITY_HIGH;
+  if (HAL_DMA_Init(&this->dma_handle_) != HAL_OK) {
+    Error_Handler();
+  }
+
+  __HAL_LINKDMA(&this->uart_handle_, hdmarx, this->dma_handle_);
+
+  if (HAL_UART_Receive_DMA(&this->uart_handle_, this->rx_buffer_, this->rx_buffer_size_) != HAL_OK) {
+    Error_Handler();
+  };
+#endif
+
+#ifdef STM32U5
+  __HAL_RCC_GPDMA1_CLK_ENABLE();
+
+  DMA_NodeConfTypeDef node_config;
+
+  node_config.NodeType = DMA_GPDMA_LINEAR_NODE;
+  node_config.Init.Request = this->dma_request_;
+  node_config.Init.BlkHWRequest = DMA_BREQ_SINGLE_BURST;
+  node_config.Init.Direction = DMA_PERIPH_TO_MEMORY;
+  node_config.Init.SrcInc = DMA_SINC_FIXED;
+  node_config.Init.DestInc = DMA_DINC_INCREMENTED;
+  node_config.Init.SrcDataWidth = DMA_SRC_DATAWIDTH_BYTE;
+  node_config.Init.DestDataWidth = DMA_DEST_DATAWIDTH_BYTE;
+  node_config.Init.SrcBurstLength = 1;
+  node_config.Init.DestBurstLength = 1;
+  node_config.Init.TransferAllocatedPort = DMA_SRC_ALLOCATED_PORT0 | DMA_DEST_ALLOCATED_PORT0;
+  node_config.Init.TransferEventMode = DMA_TCEM_REPEATED_BLOCK_TRANSFER;
+  node_config.Init.Mode = DMA_NORMAL;
+  node_config.TriggerConfig.TriggerPolarity = DMA_TRIG_POLARITY_MASKED;
+  node_config.DataHandlingConfig.DataExchange = DMA_EXCHANGE_NONE;
+  node_config.DataHandlingConfig.DataAlignment = DMA_DATA_RIGHTALIGN_ZEROPADDED;
+
+  if (HAL_DMAEx_List_BuildNode(&node_config, &this->dma_node_) != HAL_OK) {
+    Error_Handler();
+  }
+
+  if (HAL_DMAEx_List_InsertNode(&this->dma_list_, NULL, &this->dma_node_) != HAL_OK) {
+    Error_Handler();
+  }
+
+  if (HAL_DMAEx_List_SetCircularMode(&this->dma_list_) != HAL_OK) {
+    Error_Handler();
+  }
+
+  this->dma_handle_.InitLinkedList.Priority = DMA_LOW_PRIORITY_LOW_WEIGHT;
+  this->dma_handle_.InitLinkedList.LinkStepMode = DMA_LSM_FULL_EXECUTION;
+  this->dma_handle_.InitLinkedList.LinkAllocatedPort = DMA_LINK_ALLOCATED_PORT0;
+  this->dma_handle_.InitLinkedList.TransferEventMode = DMA_TCEM_BLOCK_TRANSFER;
+  this->dma_handle_.InitLinkedList.LinkedListMode = DMA_LINKEDLIST_CIRCULAR;
+  if (HAL_DMAEx_List_Init(&this->dma_handle_) != HAL_OK) {
+    Error_Handler();
+  }
+
+  if (HAL_DMAEx_List_LinkQ(&this->dma_handle_, &this->dma_list_) != HAL_OK) {
+    Error_Handler();
+  }
+
+  __HAL_LINKDMA(&this->uart_handle_, hdmarx, this->dma_handle_);
+
+  if (HAL_DMA_ConfigChannelAttributes(&this->dma_handle_, DMA_CHANNEL_NPRIV) != HAL_OK) {
+    Error_Handler();
+  }
+
+  if (HAL_UART_Receive_DMA(&this->uart_handle_, this->rx_buffer_, this->rx_buffer_size_) != HAL_OK) {
+    Error_Handler();
+  };
+#else
+#warning UART RX not supported yet on this stm32 family
+#endif
 }
 
 void STM32UARTComponent::dump_config() {
@@ -98,21 +191,53 @@ void STM32UARTComponent::dump_config() {
 
 void STM32UARTComponent::write_array(const uint8_t *data, size_t len) {
   HAL_UART_Transmit(&this->uart_handle_, data, len, 1000);
+#ifdef USE_UART_DEBUGGER
+  for (size_t i = 0; i < len; i++) {
+    this->debug_callback_.call(UART_DIRECTION_TX, data[i]);
+  }
+#endif
+}
+
+uint8_t STM32UARTComponent::get_tail_offset_() {
+  return this->rx_buffer_size_ - __HAL_DMA_GET_COUNTER(this->uart_handle_.hdmarx);
 }
 
 bool STM32UARTComponent::peek_byte(uint8_t *data) {
-  // TODO
+  size_t offs = this->get_tail_offset_();
+  if (offs != this->prev_rx_offset_) {
+    *data = this->rx_buffer_[this->prev_rx_offset_];
+    return true;
+  }
   return false;
 }
 
 bool STM32UARTComponent::read_array(uint8_t *data, size_t len) {
-  // TODO
-  return false;
+  uint8_t *dest_ptr = data;
+  size_t remaining = len;
+
+  while (remaining > 0) {
+    size_t end_offset = std::min(this->prev_rx_offset_ + this->available(), this->rx_buffer_size_);
+    size_t available = std::min(end_offset - this->prev_rx_offset_, remaining);
+    if (available) {
+      memcpy(dest_ptr, this->rx_buffer_ + this->prev_rx_offset_, available);
+      dest_ptr += available;
+      remaining -= available;
+      this->prev_rx_offset_ = (this->prev_rx_offset_ + available) % this->rx_buffer_size_;
+    } else {
+      delay(1);
+    }
+  }
+#ifdef USE_UART_DEBUGGER
+  for (size_t i = 0; i < len; i++) {
+    this->debug_callback_.call(UART_DIRECTION_RX, data[i]);
+  }
+#endif
+  return true;
 }
 
 int STM32UARTComponent::available() {
-  // TODO
-  return 0;
+  size_t offs = this->get_tail_offset_();
+  return (this->rx_buffer_size_ + offs - this->prev_rx_offset_) % this->rx_buffer_size_;
 }
 
 void STM32UARTComponent::flush() {
