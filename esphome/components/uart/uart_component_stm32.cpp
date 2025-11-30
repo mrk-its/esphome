@@ -116,9 +116,7 @@ void STM32UARTComponent::setup() {
   if (HAL_UART_Receive_DMA(&this->uart_handle_, this->rx_buffer_, this->rx_buffer_size_) != HAL_OK) {
     Error_Handler();
   };
-#endif
-
-#ifdef STM32U5
+#elif defined(STM32U5)
   __HAL_RCC_GPDMA1_CLK_ENABLE();
 
   DMA_NodeConfTypeDef node_config;
