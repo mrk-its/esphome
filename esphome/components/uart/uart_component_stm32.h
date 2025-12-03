@@ -25,20 +25,23 @@ class STM32UARTComponent : public UARTComponent, public Component {
   void flush() override;
 
   void set_instance(USART_TypeDef *instance) { this->uart_handle_.Instance = instance; }
+#ifdef STM32_UART_DMA
   void set_dma_channel(DMA_Channel_TypeDef *dma_channel) { this->dma_handle_.Instance = dma_channel; }
   void set_dma_request(uint32_t dma_request) { this->dma_request_ = dma_request; }
+#endif
   void set_name(const char *name) { this->name_ = name; }
   const char *get_name() { return this->name_.c_str(); }
 
  protected:
   void check_logger_conflict() override {}
   size_t get_tail_offset_();
-
+#ifdef STM32_UART_DMA
   DMA_HandleTypeDef dma_handle_{0};
   uint32_t dma_request_;
 #ifdef STM32U5
   DMA_NodeTypeDef dma_node_{0};
   DMA_QListTypeDef dma_list_{0};
+#endif
 #endif
 
   UART_HandleTypeDef uart_handle_{0};

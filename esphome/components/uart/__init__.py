@@ -364,17 +364,25 @@ async def to_code(config):
         instance = config[CONF_INSTANCE]
         cg.add(var.set_name(instance))
         cg.add(var.set_instance(cg.RawExpression(instance)))
-        if cv.CORE.data[KEY_STM32][KEY_MCU_SERIES] in ("F1",):
-            dma_channel = {"USART1": "DMA1_Channel5", "USART2": "DMA1_Channel6"}[
-                instance
-            ]
-        else:
-            dma_channel = cv.CORE.data[KEY_STM32][KEY_DMA_CHANNELS].pop(0)
-        cg.add(var.set_dma_channel(cg.RawExpression(dma_channel)))
-        if cv.CORE.data[KEY_STM32][KEY_MCU_SERIES] in ("U5",):
-            cg.add(
-                var.set_dma_request(cg.RawExpression(f"GPDMA1_REQUEST_{instance}_RX"))
-            )
+        if config.get(CONF_RX_BUFFER_SIZE):
+            if cv.CORE.data[KEY_STM32][KEY_MCU_SERIES] in ("F1",):
+                dma_channel = {"USART1": "DMA1_Channel5", "USART2": "DMA1_Channel6"}[
+                    instance
+                ]
+            else:
+                try:
+                    dma_channel = cv.CORE.data[KEY_STM32][KEY_DMA_CHANNELS].pop(0)
+                except IndexError:
+                    dma_channel = None
+            if dma_channel is not None:
+                cg.add_define("STM32_UART_DMA", 1)
+                cg.add(var.set_dma_channel(cg.RawExpression(dma_channel)))
+                if cv.CORE.data[KEY_STM32][KEY_MCU_SERIES] in ("U5",):
+                    cg.add(
+                        var.set_dma_request(
+                            cg.RawExpression(f"GPDMA1_REQUEST_{instance}_RX")
+                        )
+                    )
         cg.add(cg.RawExpression(f"__HAL_RCC_{instance}_CLK_ENABLE()"))
     cg.add(var.set_rx_buffer_size(config[CONF_RX_BUFFER_SIZE]))
     if CORE.is_esp32:

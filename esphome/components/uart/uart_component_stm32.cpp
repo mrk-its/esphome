@@ -98,6 +98,7 @@ void STM32UARTComponent::setup() {
 
   this->rx_buffer_ = new uint8_t[this->rx_buffer_size_];
 
+#ifdef STM32_UART_DMA
 #if defined(STM32F1) || defined(STM32L4)
   __HAL_RCC_DMA1_CLK_ENABLE();
   this->dma_handle_.Init.Direction = DMA_PERIPH_TO_MEMORY;
@@ -174,6 +175,7 @@ void STM32UARTComponent::setup() {
   };
 #else
 #warning UART RX not supported yet on this stm32 family
+#endif
 #endif
 }
 
