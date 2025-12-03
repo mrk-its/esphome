@@ -356,22 +356,22 @@ async def to_code(config):
         cg.add(var.set_name(config[CONF_PORT]))
     if CORE.is_stm32 and CONF_INSTANCE in config:
         from esphome.components.stm32.const import (
-            KEY_BOARD_SERIES,
             KEY_DMA_CHANNELS,
+            KEY_MCU_SERIES,
             KEY_STM32,
         )
 
         instance = config[CONF_INSTANCE]
         cg.add(var.set_name(instance))
         cg.add(var.set_instance(cg.RawExpression(instance)))
-        if cv.CORE.data[KEY_STM32][KEY_BOARD_SERIES] in ("F1",):
+        if cv.CORE.data[KEY_STM32][KEY_MCU_SERIES] in ("F1",):
             dma_channel = {"USART1": "DMA1_Channel5", "USART2": "DMA1_Channel6"}[
                 instance
             ]
         else:
             dma_channel = cv.CORE.data[KEY_STM32][KEY_DMA_CHANNELS].pop(0)
         cg.add(var.set_dma_channel(cg.RawExpression(dma_channel)))
-        if cv.CORE.data[KEY_STM32][KEY_BOARD_SERIES] in ("U5",):
+        if cv.CORE.data[KEY_STM32][KEY_MCU_SERIES] in ("U5",):
             cg.add(
                 var.set_dma_request(cg.RawExpression(f"GPDMA1_REQUEST_{instance}_RX"))
             )

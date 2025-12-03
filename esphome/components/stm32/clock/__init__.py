@@ -7,7 +7,7 @@ from esphome import codegen as cg, config_validation as cv
 from esphome.config_helpers import merge_config
 from esphome.const import CONF_BOARD
 
-from ..const import CONF_BOARD_FREQ, CONF_BOARD_SERIES, CONF_CLOCK
+from ..const import CONF_CLOCK, CONF_FCPU, CONF_MCU_SERIES
 from . import f1, f4, g0, g4, l4, u5
 
 logger = logging.getLogger(__name__)
@@ -151,10 +151,11 @@ def _generate_clock_config(config):
     )
     clock = config["clock"]["clock"]
 
-    clock_types = []
-    for clk_name in ("sysclk", "hclk", "pclk1", "pclk2", "pclk3"):
-        if clk_name in clock:
-            clock_types.append(f"RCC_CLOCKTYPE_{clk_name.upper()}")
+    clock_types = [
+        f"RCC_CLOCKTYPE_{clk_name.upper()}"
+        for clk_name in ("sysclk", "hclk", "pclk1", "pclk2", "pclk3")
+        if clk_name in clock
+    ]
 
     if clock_types:
         cg.add(
@@ -199,8 +200,8 @@ def board_clock_config(value):
     if CONF_CLOCK not in value:
         return value
     board = value[CONF_BOARD]
-    board_series = value[CONF_BOARD_SERIES]
-    board_freq = value[CONF_BOARD_FREQ]
+    board_series = value[CONF_MCU_SERIES]
+    board_freq = value[CONF_FCPU]
     clock_config = SERIES_CLOCK_CONFIGS.get(board_series)
     if not clock_config:
         raise cv.Invalid(f"Can't find clock config for '{board_series}' board family")
@@ -222,6 +223,6 @@ def generate_clock_config(config):
     if CONF_CLOCK not in config:
         return
     logger.debug("clock config: %s", json.dumps(config, indent=2))
-    board_family = config[CONF_BOARD_SERIES]
+    board_family = config[CONF_MCU_SERIES]
     config_generator = CONFIG_GENERATORS[board_family]
     config_generator(config)
