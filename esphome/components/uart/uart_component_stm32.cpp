@@ -23,15 +23,6 @@ void STM32UARTComponent::setup() {
     this->rx_pin_->setup();
   }
 
-  // RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
-  // PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_UART4;
-  // // PeriphClkInit.Uart4ClockSelection = RCC_UART4CLKSOURCE_SYSCLK;
-  // PeriphClkInit.Uart4ClockSelection = RCC_UART4CLKSOURCE_PCLK1;
-  //
-  // if(HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit)!=HAL_OK) {
-  //   Error_Handler();
-  // }
-
   this->uart_handle_.Init.BaudRate = baud_rate_;
   switch (data_bits_) {
 #ifdef UART_WORDLENGTH_7B

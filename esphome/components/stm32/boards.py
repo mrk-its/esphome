@@ -5,7 +5,7 @@ from esphome import platformio_api
 import esphome.config_validation as cv
 from esphome.const import CONF_BOARD
 
-from .const import CONF_BOARD_FREQ, CONF_BOARD_SERIES
+from .const import CONF_FCPU, CONF_MCU, CONF_MCU_SERIES, CONF_RAM, CONF_ROM
 
 STM32_BASE_PINS = {
     "LED": 5,
@@ -13,16 +13,7 @@ STM32_BASE_PINS = {
 
 STM32_BOARD_PINS = {}
 
-BOARD_SERIES = {}
-
-SERIES_RE = re.compile("(nucleo_|stm32)([fghlu][0-9])", re.IGNORECASE)
-
-
-def get_board_series(name):
-    if match := SERIES_RE.match(name):
-        _, family = match.groups()
-        return family.upper()
-    return BOARD_SERIES.get(name)
+MCU_RE = re.compile("STM32([FGHLU][0-9])(.*)", re.IGNORECASE)
 
 
 def platformio_get_board_details(board):
@@ -37,29 +28,22 @@ def platformio_get_board_details(board):
     return boards_data[0]
 
 
-def platformio_get_board_series(board):
-    board_data = platformio_get_board_details(board)
-    mcu = board_data.get("mcu")
-    return mcu and get_board_series(mcu)
+def validate_board_details(platform):
+    def set_if_empty(key, value_factory):
+        if not platform.get(key):
+            platform[key] = value_factory()
 
-
-def detect_board_details(platform):
-    if platform.get(CONF_BOARD_SERIES):
-        return platform
     board = platform[CONF_BOARD]
     board_details = platformio_get_board_details(board)
-    board_series = platform.get(CONF_BOARD_SERIES)
-    board_freq = platform.get(CONF_BOARD_FREQ)
-    if not board_series:
-        board_series = get_board_series(board_details["mcu"])
-        if board_series:
-            platform[CONF_BOARD_SERIES] = board_series
-    if not board_freq:
-        board_freq = board_details["fcpu"]
-        board_freq = f"{board_freq // 1000000}Mhz"
-        platform[CONF_BOARD_FREQ] = board_freq
-    if not board_series:
-        raise cv.Invalid(f"Can't detect board series for '{board}'")
-    if not board_freq:
-        raise cv.Invalid(f"Can't detect board freq for '{board}'")
+
+    set_if_empty(CONF_MCU, lambda: board_details["mcu"])
+    match = MCU_RE.match(platform[CONF_MCU])
+    if not match:
+        raise cv.Invalid(f"invalid MCU: {platform[CONF_MCU]}")
+    platform[CONF_MCU] = platform[CONF_MCU].upper()
+    set_if_empty(CONF_MCU_SERIES, lambda: match.group(1).upper())
+    set_if_empty(CONF_FCPU, lambda: board_details["fcpu"])
+    set_if_empty(CONF_RAM, lambda: board_details["ram"])
+    set_if_empty(CONF_ROM, lambda: board_details["rom"])
+
     return platform

@@ -13,15 +13,22 @@ from esphome.const import (
 )
 from esphome.core import CORE, coroutine_with_priority
 
-from .boards import detect_board_details
+from .boards import validate_board_details
 from .clock import board_clock_config, generate_clock_config
 from .const import (
-    CONF_BOARD_FREQ,
-    CONF_BOARD_SERIES,
     CONF_CLOCK,
-    KEY_BOARD,
+    CONF_FCPU,
+    CONF_MCU,
+    CONF_MCU_SERIES,
+    CONF_RAM,
+    CONF_ROM,
     KEY_DMA_CHANNELS,
+    KEY_FCPU,
     KEY_GPIO_CLOCK_ENABLED,
+    KEY_MCU,
+    KEY_MCU_SERIES,
+    KEY_RAM,
+    KEY_ROM,
     KEY_STM32,
     KEY_UART_INSTANCES,
 )
@@ -35,14 +42,11 @@ IS_TARGET_PLATFORM = True
 
 
 def set_core_data(config):
-    CORE.data[KEY_STM32] = {}
+    stm32_data = CORE.data[KEY_STM32] = {}
     CORE.data[KEY_CORE][KEY_TARGET_PLATFORM] = PLATFORM_STM32
     CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK] = "stm32cube"
-    CORE.data[KEY_STM32][KEY_BOARD] = config[CONF_BOARD]
-    CORE.data[KEY_STM32][CONF_BOARD_SERIES] = config[CONF_BOARD_SERIES]
-
     # TODO
-    CORE.data[KEY_STM32][KEY_UART_INSTANCES] = [
+    stm32_data[KEY_UART_INSTANCES] = [
         "USART1",
         "USART2",
         "USART3",
@@ -50,14 +54,20 @@ def set_core_data(config):
         "UART5",
         "LPUART1",
     ]
-    if config[CONF_BOARD_SERIES] in ("L4",):
-        CORE.data[KEY_STM32][KEY_DMA_CHANNELS] = ["DMA1_Channel1", "DMA1_Channel2"]
-    elif config[CONF_BOARD_SERIES] in ("U3", "U5"):
-        CORE.data[KEY_STM32][KEY_DMA_CHANNELS] = ["GPDMA1_Channel1", "GPDMA1_Channel0"]
+    if config[CONF_MCU_SERIES] in ("L4",):
+        stm32_data[KEY_DMA_CHANNELS] = ["DMA1_Channel1", "DMA1_Channel2"]
+    elif config[CONF_MCU_SERIES] in ("U3", "U5"):
+        stm32_data[KEY_DMA_CHANNELS] = ["GPDMA1_Channel1", "GPDMA1_Channel0"]
     else:
-        CORE.data[KEY_STM32][KEY_DMA_CHANNELS] = []
+        stm32_data[KEY_DMA_CHANNELS] = []
 
-    CORE.data[KEY_STM32][KEY_GPIO_CLOCK_ENABLED] = set()
+    stm32_data[KEY_GPIO_CLOCK_ENABLED] = set()
+    stm32_data[KEY_FCPU] = config[CONF_FCPU]
+    stm32_data[KEY_MCU] = config[CONF_MCU]
+    stm32_data[KEY_MCU_SERIES] = config[CONF_MCU_SERIES]
+    stm32_data[KEY_RAM] = config[CONF_RAM]
+    stm32_data[KEY_ROM] = config[CONF_ROM]
+
     return config
 
 
@@ -68,12 +78,15 @@ CONFIG_SCHEMA = cv.All(
                 cv.string_strict,
             ),
             cv.Optional(CONF_PLATFORM, default="ststm32"): cv.string_strict,
-            cv.Optional(CONF_BOARD_SERIES): cv.string_strict,
-            cv.Optional(CONF_BOARD_FREQ): cv.string_strict,
+            cv.Optional(CONF_MCU): cv.string_strict,
+            cv.Optional(CONF_MCU_SERIES): cv.string_strict,
+            cv.Optional(CONF_FCPU): cv.int_,
+            cv.Optional(CONF_ROM): cv.int_,
+            cv.Optional(CONF_RAM): cv.int_,
             cv.Optional(CONF_CLOCK): optional_dict(dict),
         }
     ),
-    detect_board_details,
+    validate_board_details,
     board_clock_config,
     set_core_data,
 )
