@@ -50,10 +50,10 @@ MULTI_CONF = True
 
 
 def _bus_declare_type(value):
+    if CORE.is_esp32:
+        return cv.declare_id(IDFI2CBus)(value)
     if CORE.using_arduino:
         return cv.declare_id(ArduinoI2CBus)(value)
-    if CORE.using_esp_idf:
-        return cv.declare_id(IDFI2CBus)(value)
     if CORE.is_stm32:
         return cv.declare_id(STM32I2CBus)(value)
     if CORE.using_zephyr:
@@ -62,8 +62,10 @@ def _bus_declare_type(value):
 
 
 def validate_config(config):
-    if CORE.using_esp_idf:
-        return cv.require_framework_version(esp_idf=cv.Version(5, 4, 2))(config)
+    if CORE.is_esp32:
+        return cv.require_framework_version(
+            esp_idf=cv.Version(5, 4, 2), esp32_arduino=cv.Version(3, 2, 1)
+        )(config)
     return config
 
 
@@ -80,16 +82,16 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): _bus_declare_type,
-            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_output_pin_schema,
-            cv.SplitDefault(CONF_SDA_PULLUP_ENABLED, esp32_idf=True): cv.All(
-                cv.only_with_esp_idf, cv.boolean
-            ),
-            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_output_pin_schema,
             cv.Optional(CONF_INSTANCE): cv.All(
                 cv.only_on([PLATFORM_STM32]), i2c_instance
             ),
-            cv.SplitDefault(CONF_SCL_PULLUP_ENABLED, esp32_idf=True): cv.All(
-                cv.only_with_esp_idf, cv.boolean
+            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_pin_number,
+            cv.SplitDefault(CONF_SDA_PULLUP_ENABLED, esp32=True): cv.All(
+                cv.only_on_esp32, cv.boolean
+            ),
+            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_pin_number,
+            cv.SplitDefault(CONF_SCL_PULLUP_ENABLED, esp32=True): cv.All(
+                cv.only_on_esp32, cv.boolean
             ),
             cv.SplitDefault(
                 CONF_FREQUENCY,
@@ -108,7 +110,15 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_SCAN, default=True): cv.boolean,
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040, PLATFORM_NRF52, PLATFORM_STM32]),
+    cv.only_on(
+        [
+            PLATFORM_ESP32,
+            PLATFORM_ESP8266,
+            PLATFORM_RP2040,
+            PLATFORM_NRF52,
+            PLATFORM_STM32,
+        ]
+    ),
     validate_config,
 )
 
@@ -175,7 +185,7 @@ async def to_code(config):
     cg.add(var.set_scan(config[CONF_SCAN]))
     if CONF_TIMEOUT in config:
         cg.add(var.set_timeout(int(config[CONF_TIMEOUT].total_microseconds)))
-    if CORE.using_arduino:
+    if CORE.using_arduino and not CORE.is_esp32:
         cg.add_library("Wire", None)
 
 
@@ -272,14 +282,16 @@ def final_validate_device_schema(
 FILTER_SOURCE_FILES = filter_source_files_from_platform(
     {
         "i2c_bus_arduino.cpp": {
-            PlatformFramework.ESP32_ARDUINO,
             PlatformFramework.ESP8266_ARDUINO,
             PlatformFramework.RP2040_ARDUINO,
             PlatformFramework.BK72XX_ARDUINO,
             PlatformFramework.RTL87XX_ARDUINO,
             PlatformFramework.LN882X_ARDUINO,
         },
-        "i2c_bus_esp_idf.cpp": {PlatformFramework.ESP32_IDF},
+        "i2c_bus_esp_idf.cpp": {
+            PlatformFramework.ESP32_ARDUINO,
+            PlatformFramework.ESP32_IDF,
+        },
         "i2c_bus_zephyr.cpp": {PlatformFramework.NRF52_ZEPHYR},
     }
 )
