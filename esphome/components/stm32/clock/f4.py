@@ -98,7 +98,7 @@ CLOCK_DEFAULTS = {
             "flash_latency": FLASH_LATENCY.FLASH_LATENCY_4.value,
         },
     },
-    "84Mhz": {
+    84_000_000: {
         "oscillator": {
             "pll": {
                 "plln": 84,
@@ -108,7 +108,7 @@ CLOCK_DEFAULTS = {
             "flash_latency": FLASH_LATENCY.FLASH_LATENCY_2.value,
         },
     },
-    "100Mhz": {
+    100_000_000: {
         "oscillator": {
             "pll": {
                 "plln": 100,
@@ -118,7 +118,7 @@ CLOCK_DEFAULTS = {
             "flash_latency": FLASH_LATENCY.FLASH_LATENCY_3.value,
         },
     },
-    "168Mhz": {
+    168_000_000: {
         "oscillator": {
             "pll": {
                 "plln": 168,
@@ -128,7 +128,7 @@ CLOCK_DEFAULTS = {
             "flash_latency": FLASH_LATENCY.FLASH_LATENCY_5.value,
         },
     },
-    "180Mhz": {
+    180_000_000: {
         "oscillator": {
             "pll": {
                 "plln": 180,
