@@ -56,7 +56,7 @@ void swap_flash_banks() {
   HAL_FLASHEx_OBProgram(&ob_config);
   HAL_FLASH_OB_Launch();
   HAL_FLASH_OB_Lock();
-#elif defined(U5)
+#elif defined(STM32U5)
   FLASH_OBProgramInitTypeDef ob_config = {0};
   HAL_FLASHEx_OBGetConfig(&ob_config);
 
@@ -211,7 +211,6 @@ void *_getpid = 0;
 void *_lseek = 0;
 void *_kill = 0;
 void *_gettimeofday = 0;
-
 }
 
 #endif  // USE_STM32
