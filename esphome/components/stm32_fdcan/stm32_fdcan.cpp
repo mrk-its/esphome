@@ -123,6 +123,12 @@ bool STM32FDCan::setup_internal() {
       ESP_LOGE(TAG, "can't activate rxfifo0 interrupt");
     }
 
+    if (HAL_FDCAN_ActivateNotification(&hcan_, FDCAN_IT_BUS_OFF, 0) == HAL_OK) {
+      ESP_LOGI(TAG, "busoff notification activated");
+    } else {
+      ESP_LOGE(TAG, "can't activate busoff notification");
+    }
+
     filter.IdType = FDCAN_STANDARD_ID;
     filter.FilterIndex = 0;
     filter.FilterType = FDCAN_FILTER_MASK;
@@ -254,6 +260,17 @@ extern "C" void FDCAN3_IT0_IRQHandler(void) {
   }
 }
 #endif
+
+extern "C" void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs) {
+  FDCAN_ProtocolStatusTypeDef protocol_status;
+  HAL_FDCAN_GetProtocolStatus(hfdcan, &protocol_status);
+
+  if (protocol_status.BusOff != 0) {  // If Bus-Off error occurred
+                                      // if ((ErrorStatusITs & FDCAN_IT_BUS_OFF) != 0) {  // If Bus-Off error occurred
+    hfdcan->Instance->CCCR &= ~FDCAN_CCCR_INIT;  // Clear INIT bit to recover from Bus-Off
+    ESP_LOGI(TAG, "Initiating bus-off recovery");
+  }
+}
 
 extern "C" void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
   // translate fdcan ptr to CANBus instance
