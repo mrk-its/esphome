@@ -85,11 +85,15 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_INSTANCE): cv.All(
                 cv.only_on([PLATFORM_STM32]), i2c_instance
             ),
-            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_pin_number,
+            cv.Optional(
+                CONF_SDA, default="SDA"
+            ): pins.internal_gpio_input_pin_schema,  # TODO
             cv.SplitDefault(CONF_SDA_PULLUP_ENABLED, esp32=True): cv.All(
                 cv.only_on_esp32, cv.boolean
             ),
-            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_pin_number,
+            cv.Optional(
+                CONF_SCL, default="SCL"
+            ): pins.internal_gpio_input_pin_schema,  # TODO
             cv.SplitDefault(CONF_SCL_PULLUP_ENABLED, esp32=True): cv.All(
                 cv.only_on_esp32, cv.boolean
             ),
@@ -98,6 +102,7 @@ CONFIG_SCHEMA = cv.All(
                 esp32="50kHz",
                 esp8266="50kHz",
                 rp2040="50kHz",
+                stm32="50kHz",
                 nrf52="100kHz",
             ): cv.All(
                 cv.frequency,
