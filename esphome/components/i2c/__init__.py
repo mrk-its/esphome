@@ -42,6 +42,7 @@ from esphome.const import (
     PLATFORM_ESP8266,
     PLATFORM_NRF52,
     PLATFORM_RP2040,
+    PLATFORM_STM32,
     PlatformFramework,
 )
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
@@ -119,6 +120,7 @@ CONFIG_SCHEMA = cv.All(
                 esp8266="50kHz",
                 rp2040="50kHz",
                 nrf52="100kHz",
+                stm32="100kHz",
             ): cv.All(
                 cv.frequency,
                 cv.float_range(min=0, min_included=False),
@@ -137,7 +139,15 @@ CONFIG_SCHEMA = cv.All(
             ),
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040, PLATFORM_NRF52]),
+    cv.only_on(
+        [
+            PLATFORM_ESP32,
+            PLATFORM_ESP8266,
+            PLATFORM_RP2040,
+            PLATFORM_NRF52,
+            PLATFORM_STM32,
+        ]
+    ),
     validate_config,
 )
 
@@ -182,28 +192,34 @@ async def to_code(config):
     cg.add_define("USE_I2C")
     if CORE.using_zephyr:
         zephyr_add_prj_conf("I2C", True)
-        i2c = "i2c0"
-        if zephyr_data()[KEY_BOARD] in ["xiao_ble"]:
+        if CORE.is_nrf52:
+            i2c = "i2c0"
+            if zephyr_data()[KEY_BOARD] in ["xiao_ble"]:
+                i2c = "i2c1"
+            zephyr_add_overlay(
+                f"""
+                    &pinctrl {{
+                        {i2c}_default: {i2c}_default {{
+                            group1 {{
+                                psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
+                                    <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
+                            }};
+                        }};
+                        {i2c}_sleep: {i2c}_sleep {{
+                            group1 {{
+                                psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
+                                    <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
+                                low-power-enable;
+                            }};
+                        }};
+                    }};
+                """
+            )
+        elif CORE.is_stm32:
+            zephyr_add_prj_conf("I2C", True)
+            # https://docs.zephyrproject.org/latest/samples/boards/st/i2c_timing/README.html
+            # zephyr_add_prj_conf("CONFIG_I2C_STM32_V2_TIMING", True)
             i2c = "i2c1"
-        zephyr_add_overlay(
-            f"""
-                &pinctrl {{
-                    {i2c}_default: {i2c}_default {{
-                        group1 {{
-                            psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
-                                <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
-                        }};
-                    }};
-                    {i2c}_sleep: {i2c}_sleep {{
-                        group1 {{
-                            psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
-                                <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
-                            low-power-enable;
-                        }};
-                    }};
-                }};
-            """
-        )
         var = cg.new_Pvariable(
             config[CONF_ID], MockObj(f"DEVICE_DT_GET(DT_NODELABEL({i2c}))")
         )
