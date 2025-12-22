@@ -1,4 +1,59 @@
+import json
+
+from SCons.Script import ARGUMENTS  # pylint: disable=import-error
+from SCons.Script import COMMAND_LINE_TARGETS, DEFAULT_TARGETS  # pylint: disable=import-error
+
+from pyfdt.pyfdt import FdtBlobParse
+
+def get_by_path(tree, path):
+    node = tree
+    for key in path.lstrip("/").split("/"):
+        node = node.get(key)
+        if not node:
+          return None
+    return node
+
+def resolve_alias(tree, alias):
+    aliases = tree["aliases"]
+    _, path = aliases.get(alias)
+    return get_by_path(tree, path)
+
+def get_size(tree, alias):
+    info = resolve_alias(tree, alias)
+    if info and 'reg' in info:
+      _, _, size = info['reg']
+      return int(size[2:], 16)
+
 Import("env")
 
 board_config = env.BoardConfig()
 board_config.update("frameworks", ["arduino", "zephyr"])
+print(board_config.get("upload"))
+
+process_program_deps = env.ProcessProgramDeps
+
+def ProcessProgramDepsWrapper(env):
+  process_program_deps()
+
+  #print(env.Dump())
+
+  zephyr_dts_path = "{PROJECT_BUILD_DIR}/{PIOENV}/zephyr/zephyr.dts".format(**env)
+  zephyr_dtb_path = f"{zephyr_dts_path}.dtb"
+
+  from platformio.__main__ import main
+  main(["pio", "pkg", "exec", "dtc", "--", "-A", "-O", "dtb", zephyr_dts_path, "-o", zephyr_dtb_path])
+
+  with open(zephyr_dtb_path, 'rb') as infile:
+    dtb = FdtBlobParse(infile)
+
+  fdt = dtb.to_fdt()
+  tree = json.loads(fdt.to_json().encode('ascii'))
+  print(list(tree.get('aliases', {}).keys()))
+
+  flash_size = get_size(tree, "flash0")
+  ram_size = get_size(tree, "sram0")
+
+  board_config.get("upload")['maximum_size'] = flash_size
+  board_config.get("upload")['maximum_ram_size'] = ram_size
+
+env.AddMethod(ProcessProgramDepsWrapper, "ProcessProgramDeps")

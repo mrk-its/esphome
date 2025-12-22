@@ -220,17 +220,33 @@ def copy_files():
     "upload": {
         "maximum_ram_size": 248832,
         "maximum_size": 815104,
-        "speed": 115200
+        "speed": 115200,
+        "protocol": "stlink",
+        "protocols": ["stlink"]
+    },
+    "debug": {
+        "default_tools": [
+        "stlink"
+        ],
+        "jlink_device": "STM32U535ZI",
+        "onboard_tools": [
+        "stlink"
+        ],
+        "openocd_target": "stm32u5x"
     },
     "url": "https://esphome.io/",
     "vendor": "esphome",
     "build": {
-        "bsp": {
-            "name": "adafruit"
+        "core": "stm32",
+        "cpu": "cortex-m33",
+        "extra_flags": "-DSTM32U5 -DSTM32U5xx -DSTM32U535xx",
+        "f_cpu": "160000000L",
+        "framework_extra_flags": {
+        "arduino": "-DCUSTOM_PERIPHERAL_PINS"
         },
-        "softdevice": {
-            "sd_fwid": "0x00B6"
-        }
+        "mcu": "stm32u535",
+        "product_line": "STM32U535xx",
+        "variant": "STM32U5xx/U575Z(G-I)TxQ_U585ZITxQ"
     }
 }
 """
