@@ -80,6 +80,9 @@ async def to_code(config: ConfigType) -> None:
     zephyr_add_prj_conf("UART_CONSOLE", True)
     zephyr_add_prj_conf("CONSOLE", True)
 
+    zephyr_add_prj_conf("CONFIG_LOG", True)
+    zephyr_add_prj_conf("CONFIG_LOG_MODE_IMMEDIATE", True)
+
     cg.add_platformio_option("board", config[CONF_BOARD])
     cg.add_platformio_option("monitor_speed", "115200")
     cg.add_platformio_option("upload_protocol", "stlink")
