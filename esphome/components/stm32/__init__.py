@@ -73,16 +73,19 @@ async def to_code(config: ConfigType) -> None:
 
     zephyr_add_prj_conf("CPP", True)
     zephyr_add_prj_conf("REQUIRES_FULL_LIBCPP", True)
-    zephyr_add_prj_conf("CONFIG_NEWLIB_LIBC_NANO", True)
-    zephyr_add_prj_conf("CONFIG_CBPRINTF_NANO", True)
+    # zephyr_add_prj_conf("CONFIG_NEWLIB_LIBC_NANO", True)
+    # zephyr_add_prj_conf("CONFIG_CBPRINTF_NANO", True)
 
     zephyr_add_prj_conf("CONFIG_SERIAL", True)
     zephyr_add_prj_conf("UART_CONSOLE", True)
     zephyr_add_prj_conf("CONSOLE", True)
-
+    zephyr_add_prj_conf("SHELL", True)
+    zephyr_add_prj_conf("SHELL_BACKEND_SERIAL", True)
     zephyr_add_prj_conf("CONFIG_LOG", True)
-    zephyr_add_prj_conf("CONFIG_LOG_MODE_IMMEDIATE", True)
-
+    # zephyr_add_prj_conf("CONFIG_LOG_MODE_IMMEDIATE", True)
+    zephyr_add_prj_conf("CONFIG_CAN_LOG_LEVEL_DBG", True)
+    zephyr_add_prj_conf("CONFIG_LOG_DEFAULT_LEVEL", 1)
+    zephyr_add_prj_conf("CONFIG_CLOCK_CONTROL_LOG_LEVEL_DBG", True)
     cg.add_platformio_option("board", config[CONF_BOARD])
     cg.add_platformio_option("monitor_speed", "115200")
     cg.add_platformio_option("upload_protocol", "stlink")
