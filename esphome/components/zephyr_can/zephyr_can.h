@@ -1,6 +1,7 @@
 #pragma once
 #ifdef USE_ZEPHYR
 
+#include <zephyr/drivers/can.h>
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
 
@@ -14,7 +15,7 @@ class OnInitializedTrigger : public Trigger<> {};
 
 class ZephyrCan : public canbus::Canbus {
  public:
-  ZephyrCan(const device *can_dev) : can_dev_(can_dev) {}
+  ZephyrCan(const device *can_dev, struct k_msgq *rx_queue) : can_dev_(can_dev), rx_queue_(rx_queue) {}
 
   void setup();
   void loop() override;
@@ -26,6 +27,7 @@ class ZephyrCan : public canbus::Canbus {
 
  private:
   const device *can_dev_{};
+  struct k_msgq *rx_queue_{};
 };
 }  // namespace zephyr_can
 }  // namespace esphome

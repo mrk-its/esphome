@@ -2,7 +2,6 @@
 
 #include "esphome.h"
 #include "zephyr_can.h"
-#include <zephyr/drivers/can.h>
 namespace esphome {
 namespace zephyr_can {
 
@@ -17,7 +16,6 @@ void ZephyrCan::setup() {
 
 void rx_callback(const struct device *dev, struct can_frame *frame, void *user_data) { ESP_LOGI(TAG, "received!"); }
 
-CAN_MSGQ_DEFINE(my_can_msgq, 10);
 bool ZephyrCan::setup_internal() {
   if (!device_is_ready(this->can_dev_)) {
     return false;
@@ -53,10 +51,8 @@ bool ZephyrCan::setup_internal() {
   }
 
   const struct can_filter my_filter = {.id = 0, .mask = 0, .flags = 0};
-
   int filter_id;
-  filter_id = can_add_rx_filter_msgq(this->can_dev_, &my_can_msgq, &my_filter);
-  // filter_id = can_add_rx_filter(this->can_dev_, rx_callback, 0, &my_filter);
+  filter_id = can_add_rx_filter_msgq(this->can_dev_, this->rx_queue_, &my_filter);
   if (filter_id < 0) {
     ESP_LOGE(TAG, "unable to add rx msgq [%d]", filter_id);
   }
@@ -69,10 +65,11 @@ static int old_rx_err_cnt = -1;
 static int old_tx_err_cnt = -1;
 
 void ZephyrCan::loop() {
-  struct can_frame rx_frame;
-  if (k_msgq_get(&my_can_msgq, &rx_frame, K_MSEC(20)) == 0) {
-    ESP_LOGI(TAG, "received!");
-  }
+  canbus::Canbus::loop();
+  // struct can_frame rx_frame;
+  // if (k_msgq_get(this->rx_queue_, &rx_frame, K_MSEC(20)) == 0) {
+  //   ESP_LOGI(TAG, "received!");
+  // }
   struct can_bus_err_cnt err_cnt;
   enum can_state state;
   if (can_get_state(this->can_dev_, &state, &err_cnt) == 0) {
@@ -98,11 +95,25 @@ void ZephyrCan::loop() {
 }
 
 canbus::Error ZephyrCan::send_message(struct canbus::CanFrame *frame) {
-  // return canbus::ERROR_ALLTXBUSY;
+  struct can_frame tx_frame = {.id = 0, .dlc = 0, .flags = 0};
+  int ret = can_send(this->can_dev_, &tx_frame, K_MSEC(10), NULL, NULL);
+  if (ret < 0) {
+    return canbus::ERROR_ALLTXBUSY;
+  }
   return canbus::ERROR_OK;
 };
 
-canbus::Error ZephyrCan::read_message(struct canbus::CanFrame *frame) { 0 ? canbus::ERROR_OK : canbus::ERROR_NOMSG; };
+canbus::Error ZephyrCan::read_message(struct canbus::CanFrame *frame) {
+  struct can_frame rx_frame = {0};
+  if (k_msgq_get(this->rx_queue_, &rx_frame, K_MSEC(20)) == 0) {
+    frame->can_id = rx_frame.id;
+    frame->can_data_length_code = rx_frame.dlc;
+    frame->use_extended_id = false;  // TODO
+    memcpy(frame->data, rx_frame.data, 8);
+    return canbus::ERROR_OK;
+  }
+  return canbus::ERROR_NOMSG;
+};
 
 }  // namespace zephyr_can
 }  // namespace esphome
