@@ -151,7 +151,6 @@ void MD5Digest::calculate() {
 #else
 MD5Digest::~MD5Digest() = default;
 #endif  // USE_HOST
->>>>>>> upstream/dev
 
 }  // namespace md5
 }  // namespace esphome
