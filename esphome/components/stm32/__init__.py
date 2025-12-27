@@ -80,7 +80,10 @@ async def to_code(config: ConfigType) -> None:
     zephyr_add_prj_conf("UART_CONSOLE", True)
     zephyr_add_prj_conf("CONSOLE", True)
 
-    zephyr_add_prj_conf("SHELL", False)
+    zephyr_add_prj_conf("FLASH", True)
+
+    zephyr_add_prj_conf("SHELL", True)
+    zephyr_add_prj_conf("FLASH_SHELL", True)
     zephyr_add_prj_conf("GPIO_SHELL", True)
     zephyr_add_prj_conf("SHELL_BACKEND_SERIAL", True)
 

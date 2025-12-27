@@ -71,12 +71,3 @@ async def to_code(config):
         pinctrl-0 = <&fdcan1_rx_{rx_pin} &fdcan1_tx_{tx_pin}>;
       }};
     """)
-
-    # rx_pin = await cg.gpio_pin_expression(config[CONF_RX_PIN])
-    # cg.add(zephyr_can.set_rx_pin(rx_pin))
-    #
-    # tx_pin = await cg.gpio_pin_expression(config[CONF_TX_PIN])
-    # cg.add(zephyr_can.set_tx_pin(tx_pin))
-
-    # if CONF_INSTANCE in config:
-    #     cg.add(zephyr_can.set_instance(cg.RawExpression(config[CONF_INSTANCE])))
