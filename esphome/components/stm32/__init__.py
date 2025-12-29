@@ -85,7 +85,7 @@ async def to_code(config: ConfigType) -> None:
     zephyr_add_prj_conf("FLASH_STM32_OPTION_BYTES", True)
     zephyr_add_prj_conf("FLASH_EX_OP_ENABLED", True)
 
-    zephyr_add_prj_conf("SHELL", True)
+    zephyr_add_prj_conf("SHELL", False)
     zephyr_add_prj_conf("FLASH_SHELL", True)
     zephyr_add_prj_conf("GPIO_SHELL", True)
     zephyr_add_prj_conf("SHELL_BACKEND_SERIAL", True)
@@ -95,6 +95,10 @@ async def to_code(config: ConfigType) -> None:
     zephyr_add_prj_conf("LOG_BUFFER_SIZE", 4096)
     zephyr_add_prj_conf("CAN_LOG_LEVEL_DBG", True)
     zephyr_add_prj_conf("LOG_DEFAULT_LEVEL", 1)
+
+    zephyr_add_prj_conf("REBOOT", True)
+    # zephyr_add_prj_conf("USE_STM32_HAL_HASH", True)
+    # zephyr_add_prj_conf("USE_STM32_HAL_HASH_EX", True)
 
     cg.add_platformio_option("board", config[CONF_BOARD])
     cg.add_platformio_option("monitor_speed", "115200")
