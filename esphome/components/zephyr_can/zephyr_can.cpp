@@ -25,10 +25,12 @@ bool ZephyrCan::setup_internal() {
   } else {
     ESP_LOGE(TAG, "cant stop");
   }
-  if (can_set_bitrate(this->can_dev_, 125000) != 0) {
-    ESP_LOGE(TAG, "cant set bitrate");
-    return false;
-  }
+
+  // TODO - do not hardcode bitrate
+  // if (can_set_bitrate(this->can_dev_, 125000) != 0) {
+  //   ESP_LOGE(TAG, "cant set bitrate");
+  //   return false;
+  // }
   struct can_timing timing = {0};
   if (can_calc_timing(this->can_dev_, &timing, 125000, 875) != 0) {
     ESP_LOGE(TAG, "cant calc timing");
@@ -95,8 +97,11 @@ void ZephyrCan::loop() {
 }
 
 canbus::Error ZephyrCan::send_message(struct canbus::CanFrame *frame) {
-  struct can_frame tx_frame = {.id = 0, .dlc = 0, .flags = 0};
-  int ret = can_send(this->can_dev_, &tx_frame, K_MSEC(10), NULL, NULL);
+  struct can_frame tx_frame = {.id = frame->can_id, .dlc = frame->can_data_length_code, .flags = 0};
+  if (frame->can_data_length_code) {
+    memcpy(tx_frame.data, frame->data, frame->can_data_length_code);
+  }
+  int ret = can_send(this->can_dev_, &tx_frame, K_MSEC(20), NULL, NULL);  // K_MSEC(10)  // K_FOREVER
   if (ret < 0) {
     return canbus::ERROR_ALLTXBUSY;
   }
@@ -109,7 +114,9 @@ canbus::Error ZephyrCan::read_message(struct canbus::CanFrame *frame) {
     frame->can_id = rx_frame.id;
     frame->can_data_length_code = rx_frame.dlc;
     frame->use_extended_id = false;  // TODO
-    memcpy(frame->data, rx_frame.data, 8);
+    if (rx_frame.dlc) {
+      memcpy(frame->data, rx_frame.data, rx_frame.dlc);
+    }
     return canbus::ERROR_OK;
   }
   return canbus::ERROR_NOMSG;
