@@ -81,6 +81,9 @@ async def to_code(config: ConfigType) -> None:
     zephyr_add_prj_conf("CONSOLE", True)
 
     zephyr_add_prj_conf("FLASH", True)
+    zephyr_add_prj_conf("SOC_FLASH_STM32", True)
+    zephyr_add_prj_conf("FLASH_STM32_OPTION_BYTES", True)
+    zephyr_add_prj_conf("FLASH_EX_OP_ENABLED", True)
 
     zephyr_add_prj_conf("SHELL", True)
     zephyr_add_prj_conf("FLASH_SHELL", True)
