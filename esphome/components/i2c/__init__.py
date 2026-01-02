@@ -102,6 +102,15 @@ def validate_config(config):
     return config
 
 
+def zephyr_device_name(value):
+    if value is None:
+        if CORE.is_nrf52 and zephyr_data()[KEY_BOARD] not in ["xiao_ble"]:
+            value = "i2c0"
+        else:
+            value = "i2c1"
+    return value
+
+
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
@@ -137,6 +146,11 @@ CONFIG_SCHEMA = cv.All(
                 ),
                 cv.boolean,
             ),
+            cv.Optional("device_name"): cv.All(
+                cv.only_with_zephyr,
+                cv.string_strict,
+                zephyr_device_name,
+            ),
         }
     ).extend(cv.COMPONENT_SCHEMA),
     cv.only_on(
@@ -154,8 +168,13 @@ CONFIG_SCHEMA = cv.All(
 
 def _final_validate(config):
     full_config = fv.full_config.get()[CONF_I2C]
-    if CORE.using_zephyr and len(full_config) > 1:
-        raise cv.Invalid("Second i2c is not implemented on Zephyr yet")
+    if CORE.using_zephyr:
+        for i2c_config in full_config:
+            i2c_config["device_name"] = zephyr_device_name(
+                i2c_config.get("device_name")
+            )
+        if len({c["device_name"] for c in full_config}) != len(full_config):
+            raise cv.Invalid("Unique device_name properties are required")
     if CORE.is_esp32 and get_esp32_variant() in ESP32_I2C_CAPABILITIES:
         variant = get_esp32_variant()
         max_num = ESP32_I2C_CAPABILITIES[variant]["NUM"]
@@ -191,11 +210,9 @@ async def to_code(config):
     cg.add_global(i2c_ns.using)
     cg.add_define("USE_I2C")
     if CORE.using_zephyr:
+        i2c = config["device_name"]
         zephyr_add_prj_conf("I2C", True)
         if CORE.is_nrf52:
-            i2c = "i2c0"
-            if zephyr_data()[KEY_BOARD] in ["xiao_ble"]:
-                i2c = "i2c1"
             zephyr_add_overlay(
                 f"""
                     &pinctrl {{
@@ -215,11 +232,6 @@ async def to_code(config):
                     }};
                 """
             )
-        elif CORE.is_stm32:
-            zephyr_add_prj_conf("I2C", True)
-            # https://docs.zephyrproject.org/latest/samples/boards/st/i2c_timing/README.html
-            # zephyr_add_prj_conf("CONFIG_I2C_STM32_V2_TIMING", True)
-            i2c = "i2c1"
         var = cg.new_Pvariable(
             config[CONF_ID], MockObj(f"DEVICE_DT_GET(DT_NODELABEL({i2c}))")
         )
