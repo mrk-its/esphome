@@ -9,8 +9,6 @@ namespace esphome {
 namespace zephyr_can {
 const char *const TAG = "zephyr_can";
 
-extern "C" void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs);
-
 class OnInitializedTrigger : public Trigger<> {};
 
 class ZephyrCan : public canbus::Canbus {

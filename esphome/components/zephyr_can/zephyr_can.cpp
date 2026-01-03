@@ -96,13 +96,22 @@ void ZephyrCan::loop() {
   // }
 }
 
+// tx_callback needs to be passed to avoid blocking when bus is in off state
+//
+void tx_callback(const struct device *dev, int error, void *user_data) {
+  if (error != 0) {
+    ESP_LOGE(TAG, "Sending failed [%d]", error);
+  }
+}
+
 canbus::Error ZephyrCan::send_message(struct canbus::CanFrame *frame) {
   struct can_frame tx_frame = {.id = frame->can_id, .dlc = frame->can_data_length_code, .flags = 0};
   if (frame->can_data_length_code) {
     memcpy(tx_frame.data, frame->data, frame->can_data_length_code);
   }
-  int ret = can_send(this->can_dev_, &tx_frame, K_MSEC(20), NULL, NULL);  // K_MSEC(10)  // K_FOREVER
+  int ret = can_send(this->can_dev_, &tx_frame, K_MSEC(20), tx_callback, NULL);  // K_MSEC(10)  // K_FOREVER
   if (ret < 0) {
+    ESP_LOGE(TAG, "all tx busy [%d]", ret);
     return canbus::ERROR_ALLTXBUSY;
   }
   return canbus::ERROR_OK;
