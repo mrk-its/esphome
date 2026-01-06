@@ -37,7 +37,7 @@ void ZephyrI2CBus::setup() {
   }
 
   this->recovery_result_ = i2c_recover_bus(this->i2c_dev_);
-  if (this->recovery_result_ != 0 and this->recovery_result_ != -ENOSYS) {
+  if (this->recovery_result_ != 0) {
     ESP_LOGE(TAG, "I2C recover bus failed, err %d", this->recovery_result_);
   }
   if (this->scan_) {
@@ -54,12 +54,11 @@ void ZephyrI2CBus::dump_config() {
                 "  Frequency: %s\n"
                 "  Name: %s",
                 this->sda_pin_, this->scl_pin_, get_speed(this->dev_config_), this->i2c_dev_->name);
-  if (this->recovery_result_ != -ENOSYS) {
-    if (this->recovery_result_ != 0) {
-      ESP_LOGCONFIG(TAG, "  Recovery: failed, err %d", this->recovery_result_);
-    } else {
-      ESP_LOGCONFIG(TAG, "  Recovery: bus successfully recovered");
-    }
+
+  if (this->recovery_result_ != 0) {
+    ESP_LOGCONFIG(TAG, "  Recovery: failed, err %d", this->recovery_result_);
+  } else {
+    ESP_LOGCONFIG(TAG, "  Recovery: bus successfully recovered");
   }
   if (this->scan_) {
     ESP_LOGI(TAG, "Results from I2C bus scan:");
