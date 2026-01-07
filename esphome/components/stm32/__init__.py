@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 
 import esphome.codegen as cg
@@ -60,25 +58,13 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
-def _final_validate(config):
-    pass
-
-
-FINAL_VALIDATE_SCHEMA = _final_validate
-
-
 @coroutine_with_priority(CoroPriority.PLATFORM)
 async def to_code(config: ConfigType) -> None:
     """Convert the configuration to code."""
 
     zephyr_add_prj_conf("CPP", True)
     zephyr_add_prj_conf("REQUIRES_FULL_LIBCPP", True)
-    zephyr_add_prj_conf("CONFIG_NEWLIB_LIBC_NANO", True)
-    # zephyr_add_prj_conf("CONFIG_CBPRINTF_NANO", True)
-
-    zephyr_add_prj_conf("CONFIG_SERIAL", True)
-    zephyr_add_prj_conf("UART_CONSOLE", True)
-    zephyr_add_prj_conf("CONSOLE", True)
+    zephyr_add_prj_conf("NEWLIB_LIBC_NANO", True)
 
     zephyr_add_prj_conf("FLASH", True)
     zephyr_add_prj_conf("SOC_FLASH_STM32", True)
@@ -88,10 +74,11 @@ async def to_code(config: ConfigType) -> None:
     zephyr_add_prj_conf("SHELL", False)
     zephyr_add_prj_conf("FLASH_SHELL", True)
     zephyr_add_prj_conf("GPIO_SHELL", True)
+    zephyr_add_prj_conf("SERIAL", True)
     zephyr_add_prj_conf("SHELL_BACKEND_SERIAL", True)
 
-    zephyr_add_prj_conf("CONFIG_LOG", False)
-    zephyr_add_prj_conf("CONFIG_LOG_MODE_DEFERRED", True)
+    zephyr_add_prj_conf("LOG", False)
+    zephyr_add_prj_conf("LOG_MODE_DEFERRED", True)
     zephyr_add_prj_conf("LOG_BUFFER_SIZE", 4096)
     zephyr_add_prj_conf("CAN_LOG_LEVEL_DBG", True)
     zephyr_add_prj_conf("LOG_DEFAULT_LEVEL", 1)
@@ -106,7 +93,7 @@ async def to_code(config: ConfigType) -> None:
     cg.add_build_flag("-DUSE_STM32")
     cg.add_define("ESPHOME_BOARD", config[CONF_BOARD])
     cg.add_define("ESPHOME_VARIANT", "STM52")
-    # nRF52 processors are single-core
+
     cg.add_define(ThreadModel.SINGLE)
     cg.add_platformio_option(CONF_FRAMEWORK, CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK])
     cg.add_platformio_option("platform", config[CONF_PLATFORM])
