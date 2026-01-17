@@ -1,4 +1,6 @@
 import logging
+from os import makedirs, write
+from pathlib import Path
 
 import esphome.codegen as cg
 from esphome.components.zephyr import (
@@ -21,6 +23,7 @@ from esphome.const import (
 )
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
 from esphome.types import ConfigType
+from esphome.helpers import write_file, write_file_if_changed
 
 # force import gpio to register pin schema
 from .gpio import stm32_pin_to_code  # noqa
@@ -32,12 +35,98 @@ IS_TARGET_PLATFORM = True
 _LOGGER = logging.getLogger(__name__)
 
 
+ZEPHYR_PACKAGE = "platformio/framework-zephyr@^3.40201.0"
+
+PLATFORMIO_INI_TPL = """
+; Auto generated code by esphome
+
+[common]
+lib_deps =
+build_flags =
+upload_flags =
+
+; ========== AUTO GENERATED CODE BEGIN ===========
+
+[platformio]
+description =
+[env:{name}]
+board = {board_name}
+board_frameworks =
+    stm32cube
+; boards_dir =
+build_flags =
+build_unflags =
+extra_scripts =
+    pre:pre_build.py
+framework = zephyr
+lib_deps =
+    ${{common.lib_deps}}
+;monitor_speed = 115200
+platform = {platform}
+platform_packages =
+    {zephyr_package}
+;upload_protocol = stlink
+; foo
+; =========== AUTO GENERATED CODE END ============
+"""
+
+PRE_BUILD_TPL = """
+Import("env")
+board_config = env.BoardConfig()
+board_config.update("frameworks", ["zephyr"])
+env.Execute("$PYTHONEXE -m pip install pydevicetree")
+# foo
+"""
+
+CMAKELISTS_TPL = """
+cmake_minimum_required(VERSION 3.13.1)
+include($ENV{{ZEPHYR_BASE}}/cmake/app/boilerplate.cmake NO_POLICY_SCOPE)
+project({name})
+
+FILE(GLOB app_sources ../src/*.c*)
+target_sources(app PRIVATE ${{app_sources}})
+# foo
+"""
+
+def write_file_if_not_exists(path: Path, contents: str):
+    if not path.exists():
+        print(f"writing file {path}")
+        write_file_if_changed(path, contents)
+
+
 def set_core_data(config: ConfigType) -> ConfigType:
     zephyr_set_core_data(config)
     CORE.data[KEY_CORE][KEY_TARGET_PLATFORM] = "stm32"
     CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK] = KEY_ZEPHYR
     CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION] = cv.Version(4, 2, 1)
 
+    dst_dir = CORE.relative_build_path("")
+    zephyr_dts_path = dst_dir / ".pioenvs" / f"{CORE.name}" / "zephyr" / "zephyr.dts"
+    if not zephyr_dts_path.exists():
+        write_file_if_not_exists(dst_dir / "src" / "foo.c", "")
+        write_file_if_not_exists(dst_dir / "zephyr" / "prj.conf", "")
+        write_file_if_not_exists(dst_dir / "platformio.ini", PLATFORMIO_INI_TPL.format(
+            zephyr_package=ZEPHYR_PACKAGE,
+            platform=config[CONF_PLATFORM],
+            board_name=config[CONF_BOARD],
+            name=CORE.name,
+
+        ))
+        write_file_if_not_exists(dst_dir / "pre_build.py", PRE_BUILD_TPL)
+        write_file_if_not_exists(dst_dir / "zephyr/CMakeLists.txt", CMAKELISTS_TPL.format(
+            name=CORE.name,
+        ))
+        if not CORE.data[KEY_CORE].get("pre_build"):
+            from esphome import platformio_api
+            platformio_api.run_platformio_cli_run(config, CORE.verbose, *["-t", "envdump"])
+            print("HERE (set_core_data)", CORE.data, config)
+            CORE.data[KEY_CORE]["pre_build"] = True
+    if zephyr_dts_path.exists():
+        from pydevicetree import Devicetree
+        dt = Devicetree.parseFile(zephyr_dts_path)
+        for c in dt.get_by_path('/aliases').child_nodes():
+            print(c)
+        print(zephyr_dts_path.read_text())
     return config
 
 
@@ -77,7 +166,7 @@ async def to_code(config: ConfigType) -> None:
 
     cg.add_platformio_option(
         "platform_packages",
-        ["platformio/framework-zephyr@^3.40201.0"],
+        [ZEPHYR_PACKAGE],
     )
 
     zephyr_to_code(config)
