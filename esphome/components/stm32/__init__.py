@@ -66,7 +66,6 @@ platform = {platform}
 platform_packages =
     {zephyr_package}
 ;upload_protocol = stlink
-; foo
 ; =========== AUTO GENERATED CODE END ============
 """
 
@@ -74,8 +73,10 @@ PRE_BUILD_TPL = """
 Import("env")
 board_config = env.BoardConfig()
 board_config.update("frameworks", ["zephyr"])
-env.Execute("$PYTHONEXE -m pip install pydevicetree")
-# foo
+platform = env.PioPlatform()
+FRAMEWORK_DIR = platform.get_package_dir("framework-zephyr")
+print(FRAMEWORK_DIR)
+env.Execute(f"$PYTHONEXE -m pip install {FRAMEWORK_DIR}/scripts/dts/python-devicetree")
 """
 
 CMAKELISTS_TPL = """
@@ -122,11 +123,8 @@ def set_core_data(config: ConfigType) -> ConfigType:
             print("HERE (set_core_data)", CORE.data, config)
             CORE.data[KEY_CORE]["pre_build"] = True
     if zephyr_dts_path.exists():
-        from pydevicetree import Devicetree
-        dt = Devicetree.parseFile(zephyr_dts_path)
-        for c in dt.get_by_path('/aliases').child_nodes():
-            print(c)
-        print(zephyr_dts_path.read_text())
+        from devicetree import dtlib;
+        print(list(dtlib.DT(zephyr_dts_path).node_iter()))
     return config
 
 
