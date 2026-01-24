@@ -6,8 +6,9 @@ from esphome.components.zephyr import (
     zephyr_add_prj_conf,
     zephyr_set_core_data,
     zephyr_to_code,
+    devicetree_parser,
 )
-from esphome.components.zephyr.const import KEY_BOOTLOADER, KEY_ZEPHYR
+from esphome.components.zephyr.const import KEY_BOOTLOADER, KEY_ZEPHYR, KEY_DEVICETREE
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_BOARD,
@@ -29,10 +30,15 @@ CODEOWNERS = ["@mrk-its"]
 AUTO_LOAD = ["zephyr"]
 IS_TARGET_PLATFORM = True
 
+ZEPHYR_PACKAGE = "platformio/framework-zephyr@^3.40201.0"
+
 _LOGGER = logging.getLogger(__name__)
 
 
 def set_core_data(config: ConfigType) -> ConfigType:
+    parser = devicetree_parser.DeviceTreeParser(config[CONF_PLATFORM], ZEPHYR_PACKAGE)
+    CORE.data[KEY_CORE][KEY_DEVICETREE] = parser.get_board_dt(config[CONF_BOARD])
+
     zephyr_set_core_data(config)
     CORE.data[KEY_CORE][KEY_TARGET_PLATFORM] = "stm32"
     CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK] = KEY_ZEPHYR
@@ -75,10 +81,7 @@ async def to_code(config: ConfigType) -> None:
     cg.add_platformio_option(CONF_FRAMEWORK, CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK])
     cg.add_platformio_option("platform", config[CONF_PLATFORM])
 
-    cg.add_platformio_option(
-        "platform_packages",
-        ["platformio/framework-zephyr@^3.40201.0"],
-    )
+    cg.add_platformio_option("platform_packages", [ZEPHYR_PACKAGE])
 
     zephyr_to_code(config)
 
