@@ -23,6 +23,9 @@ from esphome.const import (
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
 from esphome.types import ConfigType
 
+from pathlib import Path
+from platformio.platform.factory import PlatformFactory
+
 # force import gpio to register pin schema
 from .gpio import stm32_pin_to_code  # noqa
 
@@ -31,14 +34,32 @@ AUTO_LOAD = ["zephyr"]
 IS_TARGET_PLATFORM = True
 
 ZEPHYR_PACKAGE = "platformio/framework-zephyr@^3.40201.0"
+TOOLCHAIN_PACKAGE = "platformio/toolchain-gccarmnoneeabi@1.120301.0"
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def set_core_data(config: ConfigType) -> ConfigType:
-    parser = devicetree_parser.DeviceTreeParser(config[CONF_PLATFORM], ZEPHYR_PACKAGE)
-    CORE.data[KEY_CORE][KEY_DEVICETREE] = parser.get_board_dt(config[CONF_BOARD])
+class STM32DeviceTreeParser(devicetree_parser.BaseDeviceTreeParser):
+    def __init__(self, platform, zephyr_pkg, toolchain_pkg):
+        platform = PlatformFactory.new(platform, autoinstall=True)
+        platform._custom_packages = [zephyr_pkg, toolchain_pkg]
+        platform.install_required_packages()
 
+        zephyr_path = Path(platform.get_package("framework-zephyr").path)
+        toolchain_path = Path(platform.get_package("toolchain-gccarmnoneeabi").path)
+        gcc_path = toolchain_path / "bin" / "arm-none-eabi-gcc"
+
+        super().__init__(zephyr_path, gcc_path)
+
+
+def _parse_devicetree(config: ConfigType) -> ConfigType:
+    parser = STM32DeviceTreeParser(config[CONF_PLATFORM], ZEPHYR_PACKAGE, TOOLCHAIN_PACKAGE)
+    dt = parser.get_board_dt(config[CONF_BOARD])
+    CORE.data[KEY_CORE][KEY_DEVICETREE] = dt 
+    return config
+
+
+def set_core_data(config: ConfigType) -> ConfigType:
     zephyr_set_core_data(config)
     CORE.data[KEY_CORE][KEY_TARGET_PLATFORM] = "stm32"
     CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK] = KEY_ZEPHYR
@@ -58,6 +79,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_PLATFORM, default="ststm32"): cv.string_strict,
         }
     ),
+    _parse_devicetree,
     set_core_data,
 )
 
@@ -81,7 +103,7 @@ async def to_code(config: ConfigType) -> None:
     cg.add_platformio_option(CONF_FRAMEWORK, CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK])
     cg.add_platformio_option("platform", config[CONF_PLATFORM])
 
-    cg.add_platformio_option("platform_packages", [ZEPHYR_PACKAGE])
+    cg.add_platformio_option("platform_packages", [ZEPHYR_PACKAGE, TOOLCHAIN_PACKAGE])
 
     zephyr_to_code(config)
 
