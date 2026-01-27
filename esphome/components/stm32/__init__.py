@@ -53,9 +53,10 @@ class STM32DeviceTreeParser(devicetree_parser.BaseDeviceTreeParser):
 
 
 def _parse_devicetree(config: ConfigType) -> ConfigType:
-    parser = STM32DeviceTreeParser(config[CONF_PLATFORM], ZEPHYR_PACKAGE, TOOLCHAIN_PACKAGE)
-    dt = parser.get_board_dt(config[CONF_BOARD])
-    CORE.data[KEY_CORE][KEY_DEVICETREE] = dt 
+    if KEY_DEVICETREE not in CORE.data[KEY_CORE]:
+        parser = STM32DeviceTreeParser(config[CONF_PLATFORM], ZEPHYR_PACKAGE, TOOLCHAIN_PACKAGE)
+        dt = parser.get_board_dt(config[CONF_BOARD])
+        CORE.data[KEY_CORE][KEY_DEVICETREE] = dt
     return config
 
 
@@ -110,7 +111,7 @@ async def to_code(config: ConfigType) -> None:
 
 def copy_files() -> None:
     """Copy files to the build directory."""
-    zephyr_copy_files()
+    zephyr_copy_files(overlay_filename = CORE.data["zephyr"]['board'] + ".overlay")
 
 
 def _upload_using_platformio(

@@ -73,3 +73,9 @@ async def stm32_pin_to_code(config):
         cg.add(var.set_inverted(True))
     cg.add(var.set_flags(pins.gpio_flags_expr(config[CONF_MODE])))
     return var
+
+
+def pin_number_to_name(number):
+    port = chr(ord("a") + number // 16)
+    nr = number % 16
+    return f"p{port}{nr}"
