@@ -183,7 +183,7 @@ def zephyr_add_user(key, value):
     user[key] += [value]
 
 
-def copy_files():
+def copy_files(overlay_filename="app.overlay"):
     user = zephyr_data()[KEY_USER]
     if user:
         zephyr_add_overlay(
@@ -209,7 +209,7 @@ def copy_files():
     write_file_if_changed(CORE.relative_build_path("zephyr/prj.conf"), prj_conf)
 
     write_file_if_changed(
-        CORE.relative_build_path("zephyr/app.overlay"),
+        CORE.relative_build_path(f"zephyr/{overlay_filename}"),
         zephyr_data()[KEY_OVERLAY],
     )
 
