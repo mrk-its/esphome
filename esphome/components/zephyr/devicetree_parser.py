@@ -1,9 +1,13 @@
 import argparse
 import logging
+import os
 import tempfile
 import sys
 from pathlib import Path
 from platformio.proc import exec_command
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class BaseDeviceTreeParser:
@@ -16,7 +20,7 @@ class BaseDeviceTreeParser:
         try:
             __import__('devicetree')
         except ImportError:
-            result = exec_command([sys.executable, "-m", "pip", "install", self.zephyr_path / "scripts" / "dts" / "python-devicetree"])
+            result = exec_command([sys.executable, "-m", "pip", "install", "-e", self.zephyr_path / "scripts" / "dts" / "python-devicetree"])
             assert not result['returncode'], result
 
         path = self.zephyr_path / "scripts"
@@ -36,12 +40,19 @@ class BaseDeviceTreeParser:
         ])
         if result['returncode']:
             raise ValueError(f"non-zero return code: {result['returncode']}")
+
         _, tmp_dts = tempfile.mkstemp(".dts")
         with open(tmp_dts, 'w') as f:
             f.write(result['out'])
 
         from devicetree.dtlib import DT
-        return DT(tmp_dts)
+        class CustomDT(DT):
+            def _remove_unreferenced(self):
+                pass
+
+        dt = CustomDT(tmp_dts, include_path=[self.zephyr_path / dir for dir in INCLUDE_DIRS if (self.zephyr_path / dir).is_dir()])
+        os.remove(tmp_dts)
+        return dt
 
     def get_zephyr_board(self, board_name):
         import list_boards
@@ -54,12 +65,15 @@ class BaseDeviceTreeParser:
         )
         return list_boards.find_v2_boards(list_args).get(board_name)
 
-
     def get_board_dt(self, board_name):
         board = self.get_zephyr_board(board_name)
-        print("board:", board)
+        assert board, f"board {board_name} not found"
         dts_path = board.dir / f"{board.name}.dts"
         if not dts_path.is_file():
             raise ValueError("can't find dts file")
-        return self._process_dts(dts_path)
+        dt = self._process_dts(dts_path)
+        import sys
+        if 'config' in sys.argv:
+            _LOGGER.info("%s", dt)
+        return dt
 
