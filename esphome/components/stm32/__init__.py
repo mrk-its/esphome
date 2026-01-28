@@ -6,7 +6,7 @@ from esphome.components.zephyr import (
     zephyr_add_prj_conf,
     zephyr_set_core_data,
     zephyr_to_code,
-    devicetree_parser,
+    devicetree,
 )
 from esphome.components.zephyr.const import KEY_BOOTLOADER, KEY_ZEPHYR, KEY_DEVICETREE
 import esphome.config_validation as cv
@@ -39,7 +39,7 @@ TOOLCHAIN_PACKAGE = "platformio/toolchain-gccarmnoneeabi@1.120301.0"
 _LOGGER = logging.getLogger(__name__)
 
 
-class STM32DeviceTreeParser(devicetree_parser.BaseDeviceTreeParser):
+class STM32DeviceTreeParser(devicetree.BaseDeviceTreeParser):
     def __init__(self, platform, zephyr_pkg, toolchain_pkg):
         platform = PlatformFactory.new(platform, autoinstall=True)
         platform._custom_packages = [zephyr_pkg, toolchain_pkg]
