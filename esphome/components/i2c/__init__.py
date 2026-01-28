@@ -1,3 +1,4 @@
+import functools
 import logging
 
 from esphome import pins
@@ -20,11 +21,10 @@ from esphome.components.esp32.gpio_esp32_c5 import esp32_c5_validate_lp_i2c
 from esphome.components.esp32.gpio_esp32_c6 import esp32_c6_validate_lp_i2c
 from esphome.components.esp32.gpio_esp32_p4 import esp32_p4_validate_lp_i2c
 from esphome.components.zephyr import (
+    devicetree,
     zephyr_add_overlay,
     zephyr_add_prj_conf,
-    zephyr_data,
 )
-from esphome.components.zephyr.const import KEY_BOARD
 from esphome.config_helpers import filter_source_files_from_platform
 import esphome.config_validation as cv
 from esphome.const import (
@@ -38,10 +38,12 @@ from esphome.const import (
     CONF_SCL,
     CONF_SDA,
     CONF_TIMEOUT,
+    KEY_CORE,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
     PLATFORM_NRF52,
     PLATFORM_RP2040,
+    Framework,
     PlatformFramework,
 )
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
@@ -93,11 +95,33 @@ def _bus_declare_type(value):
     raise NotImplementedError
 
 
+ZEPHYR_I2C_BINDINGS = set(["st,stm32-i2c-v2"])
+
+zephyr_i2c_device_name = functools.partial(
+    devicetree.validate_zephyr_device_name,
+    bindings=ZEPHYR_I2C_BINDINGS,
+    pref_label_predicate=lambda label: label.startswith("i2c"),
+)
+
+
+def stm32_pinctl_labels(config):
+    from esphome.components.stm32.gpio import pin_number_to_name
+    device_name = config['device_name']
+    for pin_name in (CONF_SDA, CONF_SCL):
+        if pin_name in config:
+            yield pin_name, f"{device_name}_{pin_name}_{pin_number_to_name(config[pin_name])}"
+
 def validate_config(config):
     if CORE.is_esp32:
         return cv.require_framework_version(
             esp_idf=cv.Version(5, 4, 2), esp32_arduino=cv.Version(3, 2, 1)
         )(config)
+    if CORE.is_stm32:
+        dt = CORE.data[KEY_CORE]['devicetree']
+        for pin_key, dt_label in stm32_pinctl_labels(config):
+            if dt_label not in dt.label2node:
+                raise cv.Invalid(f"invalid {pin_key} pin")
+
     return config
 
 
@@ -105,11 +129,11 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): _bus_declare_type,
-            cv.Optional(CONF_SDA, default="SDA"): pins.internal_gpio_pin_number,
+            cv.SplitDefault(CONF_SDA, esp32="SDA", esp8266="SDA", rp2040="SDA"): pins.internal_gpio_pin_number,
             cv.SplitDefault(CONF_SDA_PULLUP_ENABLED, esp32=True): cv.All(
                 cv.only_on_esp32, cv.boolean
             ),
-            cv.Optional(CONF_SCL, default="SCL"): pins.internal_gpio_pin_number,
+            cv.SplitDefault(CONF_SCL, esp32="SCL", esp8266="SCL", rp2040="SCL"): pins.internal_gpio_pin_number,
             cv.SplitDefault(CONF_SCL_PULLUP_ENABLED, esp32=True): cv.All(
                 cv.only_on_esp32, cv.boolean
             ),
@@ -119,6 +143,7 @@ CONFIG_SCHEMA = cv.All(
                 esp8266="50kHz",
                 rp2040="50kHz",
                 nrf52="100kHz",
+                stm32="100kHz",
             ): cv.All(
                 cv.frequency,
                 cv.float_range(min=0, min_included=False),
@@ -135,9 +160,10 @@ CONFIG_SCHEMA = cv.All(
                 ),
                 cv.boolean,
             ),
+            cv.OnlyWith("device_name", Framework.ZEPHYR, default=None): zephyr_i2c_device_name,
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040, PLATFORM_NRF52]),
+    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_RP2040, PLATFORM_NRF52, "stm32"]),
     validate_config,
 )
 
@@ -181,40 +207,45 @@ async def to_code(config):
     cg.add_global(i2c_ns.using)
     cg.add_define("USE_I2C")
     if CORE.using_zephyr:
+        i2c = config['device_name']
         zephyr_add_prj_conf("I2C", True)
-        i2c = "i2c0"
-        if zephyr_data()[KEY_BOARD] in ["xiao_ble"]:
-            i2c = "i2c1"
-        zephyr_add_overlay(
-            f"""
-                &pinctrl {{
-                    {i2c}_default: {i2c}_default {{
-                        group1 {{
-                            psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
-                                <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
-                        }};
-                    }};
-                    {i2c}_sleep: {i2c}_sleep {{
-                        group1 {{
-                            psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
-                                <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
-                            low-power-enable;
-                        }};
-                    }};
-                }};
-            """
-        )
         var = cg.new_Pvariable(
             config[CONF_ID], MockObj(f"DEVICE_DT_GET(DT_NODELABEL({i2c}))")
         )
+        if CORE.is_nrf52:
+            zephyr_add_overlay(
+                f"""
+                    &pinctrl {{
+                        {i2c}_default: {i2c}_default {{
+                            group1 {{
+                                psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
+                                    <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
+                            }};
+                        }};
+                        {i2c}_sleep: {i2c}_sleep {{
+                            group1 {{
+                                psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
+                                    <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
+                                low-power-enable;
+                            }};
+                        }};
+                    }};
+                """
+            )
+        if CORE.is_stm32:
+            pinctl = ' '.join(f'&{label}' for _, label in stm32_pinctl_labels(config))
+            pinctl = pinctl and f'pinctrl-0 = <{pinctl}>; pinctrl-names="default";' or ''
+            zephyr_add_overlay(f'&{i2c} {{status = "okay"; {pinctl}}};')
     else:
         var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    cg.add(var.set_sda_pin(config[CONF_SDA]))
+    if CONF_SDA in config:
+        cg.add(var.set_sda_pin(config[CONF_SDA]))
     if CONF_SDA_PULLUP_ENABLED in config:
         cg.add(var.set_sda_pullup_enabled(config[CONF_SDA_PULLUP_ENABLED]))
-    cg.add(var.set_scl_pin(config[CONF_SCL]))
+    if CONF_SCL in config:
+        cg.add(var.set_scl_pin(config[CONF_SCL]))
     if CONF_SCL_PULLUP_ENABLED in config:
         cg.add(var.set_scl_pullup_enabled(config[CONF_SCL_PULLUP_ENABLED]))
 
