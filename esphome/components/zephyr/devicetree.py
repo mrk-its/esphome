@@ -6,6 +6,10 @@ import sys
 from pathlib import Path
 from platformio.proc import exec_command
 
+from esphome.const import KEY_CORE
+from esphome.core import CORE
+import esphome.config_validation as cv
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,3 +81,31 @@ class BaseDeviceTreeParser:
             _LOGGER.info("%s", dt)
         return dt
 
+
+def is_compatible(node, values_set):
+    if not node:
+        return False
+    compatible = node.props.get('compatible')
+    if not compatible:
+        return False
+    return not values_set.isdisjoint(compatible.to_strings())
+
+
+def validate_zephyr_device_name(device_name, bindings, pref_label_predicate=None):
+    dt = CORE.data[KEY_CORE]['devicetree']
+    if device_name:
+        node = dt.label2node.get(device_name)
+        if not is_compatible(node, bindings):
+            raise cv.Invalid(f"Invalid device name {device_name}")
+    else:
+        device_names = sorted([
+            label
+            for node in dt.node_iter()
+            if is_compatible(node, bindings)
+            for label in node.labels
+        ], key=(lambda label: (pref_label_predicate and not pref_label_predicate(label), label)))
+
+        if not device_names:
+            raise cv.Invalid("devicetree: cannot find i2c device")
+        device_name = device_names[0]
+    return device_name
