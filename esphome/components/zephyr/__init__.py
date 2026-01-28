@@ -6,7 +6,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_BOARD, KEY_CORE, KEY_FRAMEWORK_VERSION
 from esphome.core import CORE
-from esphome.helpers import copy_file_if_changed, write_file_if_changed
+from esphome.helpers import copy_file_if_changed, write_file, write_file_if_changed
 
 from .const import (
     BOOTLOADER_MCUBOOT,
@@ -198,6 +198,11 @@ def copy_files(overlay_filename="app.overlay"):
 
     want_opts = zephyr_data()[KEY_PRJ_CONF]
 
+    overlay_changed = write_file_if_changed(
+        CORE.relative_build_path(f"zephyr/{overlay_filename}"),
+        zephyr_data()[KEY_OVERLAY],
+    )
+
     prj_conf = (
         "\n".join(
             f"{name}={_format_prj_conf_val(value[0])}"
@@ -206,12 +211,8 @@ def copy_files(overlay_filename="app.overlay"):
         + "\n"
     )
 
-    write_file_if_changed(CORE.relative_build_path("zephyr/prj.conf"), prj_conf)
-
-    write_file_if_changed(
-        CORE.relative_build_path(f"zephyr/{overlay_filename}"),
-        zephyr_data()[KEY_OVERLAY],
-    )
+    write_prj_conf = write_file if overlay_changed else write_file_if_changed
+    write_prj_conf(CORE.relative_build_path("zephyr/prj.conf"), prj_conf)
 
     if zephyr_data()[KEY_BOOTLOADER] == BOOTLOADER_MCUBOOT or zephyr_data()[
         KEY_BOARD
