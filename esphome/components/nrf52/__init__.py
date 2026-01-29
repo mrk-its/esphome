@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
 from esphome import pins
 import esphome.codegen as cg
 from esphome.components.zephyr import (
     copy_files as zephyr_copy_files,
+    devicetree,
     zephyr_add_overlay,
     zephyr_add_pm_static,
     zephyr_add_prj_conf,
@@ -39,6 +41,7 @@ from esphome.const import (
 from esphome.core import CORE, CoroPriority, EsphomeError, coroutine_with_priority
 from esphome.storage_json import StorageJSON
 from esphome.types import ConfigType
+from platformio.platform.factory import PlatformFactory
 
 from .boards import BOARDS_ZEPHYR, BOOTLOADER_CONFIG
 from .const import (
@@ -54,7 +57,39 @@ from .gpio import nrf52_pin_to_code  # noqa
 CODEOWNERS = ["@tomaszduda23"]
 AUTO_LOAD = ["zephyr", "preferences"]
 IS_TARGET_PLATFORM = True
+
+# PLATFORM = "https://github.com/tomaszduda23/platform-nordicnrf52/archive/refs/tags/v10.3.0-5.zip"
+PLATFORM = "git+https://github.com/dawret/platform-nordicnrf52.git#wp/consolidation/2"
+
 _LOGGER = logging.getLogger(__name__)
+
+
+class NRF52DeviceTreeParser(devicetree.BaseDeviceTreeParser):
+    def __init__(self, platform, zephyr_pkg):
+        platform = PlatformFactory.new(platform, autoinstall=True)
+        print("here", dir(platform), platform.get_dir())
+        platform_path = Path(platform.get_dir())
+        sys.path.insert(0, str(platform_path / "builder"))
+        import sdk_manager
+        env = sdk_manager.BuildEnvironment(
+            platform_path / "nrf-sdk",
+            platform_path,
+            "v2.9.2",
+            ['arm-zephyr-eabi', 'riscv64-zephyr-elf']
+        )
+        env.setup(platform_path / "downloads")
+
+        gcc_path = env.toolchain_dir / "opt" / "zephyr-sdk" / "arm-zephyr-eabi" / "bin" / "arm-zephyr-eabi-gcc"
+
+        super().__init__(env.zephyr_dir, gcc_path)
+
+
+def _parse_devicetree(config: ConfigType) -> ConfigType:
+    if 'devicetree' not in CORE.data[KEY_CORE]:
+        zephyr_package = CORE.data[KEY_CORE]["zephyr_package"]
+        parser = NRF52DeviceTreeParser(PLATFORM, zephyr_package)
+        CORE.data[KEY_CORE]["devicetree"] = parser.get_board_dt(config[CONF_BOARD])
+    return config
 
 
 def set_core_data(config: ConfigType) -> ConfigType:
@@ -73,6 +108,8 @@ def set_framework(config: ConfigType) -> ConfigType:
         cv.version_number(config[CONF_FRAMEWORK][CONF_VERSION])
     )
     CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION] = framework_ver
+    CORE.data[KEY_CORE]["zephyr_package"] = f"platformio/framework-zephyr@https://github.com/tomaszduda23/framework-sdk-nrf/archive/refs/tags/v{CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]}.zip"
+
     if framework_ver < cv.Version(2, 9, 2):
         return cv.require_framework_version(
             nrf52_zephyr=cv.Version(2, 6, 1, "a"),
@@ -132,6 +169,8 @@ VOLTAGE_LEVELS = [1.8, 2.1, 2.4, 2.7, 3.0, 3.3]
 CONFIG_SCHEMA = cv.All(
     _detect_bootloader,
     set_core_data,
+    set_framework,
+    _parse_devicetree,
     cv.Schema(
         {
             cv.Required(CONF_BOARD): cv.string_strict,
@@ -159,7 +198,6 @@ CONFIG_SCHEMA = cv.All(
             ),
         }
     ),
-    set_framework,
 )
 
 
@@ -191,16 +229,13 @@ async def to_code(config: ConfigType) -> None:
     # nRF52 processors are single-core
     cg.add_define(ThreadModel.SINGLE)
     cg.add_platformio_option(CONF_FRAMEWORK, CORE.data[KEY_CORE][KEY_TARGET_FRAMEWORK])
-    cg.add_platformio_option(
-        "platform",
-        "https://github.com/tomaszduda23/platform-nordicnrf52/archive/refs/tags/v10.3.0-5.zip",
-    )
-    cg.add_platformio_option(
-        "platform_packages",
-        [
-            f"platformio/framework-zephyr@https://github.com/tomaszduda23/framework-sdk-nrf/archive/refs/tags/v{CORE.data[KEY_CORE][KEY_FRAMEWORK_VERSION]}.zip",
-        ],
-    )
+    cg.add_platformio_option("platform", PLATFORM)
+    # cg.add_platformio_option(
+    #     "platform_packages",
+    #     [
+    #         CORE.data[KEY_CORE]["zephyr_package"],
+    #     ],
+    # )
 
     if config[KEY_BOOTLOADER] == BOOTLOADER_MCUBOOT:
         cg.add_define("USE_BOOTLOADER_MCUBOOT")
