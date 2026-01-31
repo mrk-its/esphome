@@ -3,7 +3,9 @@ import logging
 import os
 import tempfile
 import sys
+
 from pathlib import Path
+from typing import Iterable
 from platformio.proc import exec_command
 
 from esphome.const import KEY_CORE
@@ -15,9 +17,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class BaseDeviceTreeParser:
-    def __init__(self, zephyr_path: Path, gcc_path: Path):
+    def __init__(self, zephyr_path: Path, gcc_path: Path, extra_board_roots: Iterable[Path] = ()):
         self.zephyr_path = zephyr_path
         self.gcc_path = gcc_path
+        self.extra_board_roots = extra_board_roots
         self._install_python_deps()
 
     def _install_python_deps(self):
@@ -63,11 +66,22 @@ class BaseDeviceTreeParser:
         list_args = argparse.Namespace(
             arch_roots=[],
             soc_roots=[self.zephyr_path],
-            board_roots=[self.zephyr_path],
+            board_roots=[self.zephyr_path, *self.extra_board_roots],
             board=board_name,
             board_dir=[],
         )
         return list_boards.find_v2_boards(list_args).get(board_name)
+
+    def list_boards(self):
+        import list_boards as lb
+        list_args = argparse.Namespace(
+            arch_roots=[],
+            soc_roots=[self.zephyr_path],
+            board_roots=[self.zephyr_path],
+            board=None,
+            board_dir=[],
+        )
+        return lb.find_v2_boards(list_args).values()
 
     def get_board_dt(self, board_name):
         board = self.get_zephyr_board(board_name)
