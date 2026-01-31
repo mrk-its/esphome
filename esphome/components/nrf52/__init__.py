@@ -67,7 +67,6 @@ _LOGGER = logging.getLogger(__name__)
 class NRF52DeviceTreeParser(devicetree.BaseDeviceTreeParser):
     def __init__(self, platform, zephyr_pkg):
         platform = PlatformFactory.new(platform, autoinstall=True)
-        print("here", dir(platform), platform.get_dir())
         platform_path = Path(platform.get_dir())
         sys.path.insert(0, str(platform_path / "builder"))
         import sdk_manager
