@@ -49,15 +49,24 @@ class STM32DeviceTreeParser(devicetree.BaseDeviceTreeParser):
         toolchain_path = Path(platform.get_package("toolchain-gccarmnoneeabi").path)
         gcc_path = toolchain_path / "bin" / "arm-none-eabi-gcc"
 
-        super().__init__(zephyr_path, gcc_path)
+        super().__init__(zephyr_path, gcc_path, extra_board_roots=[Path('/home/mrk/priv/zrodlana/zephyr')])
 
 
 def _parse_devicetree(config: ConfigType) -> ConfigType:
     if KEY_DEVICETREE not in CORE.data[KEY_CORE]:
         parser = STM32DeviceTreeParser(config[CONF_PLATFORM], ZEPHYR_PACKAGE, TOOLCHAIN_PACKAGE)
+        boards = parser.list_boards()
+        print("number of stm32 boards:", len([b for b in boards if any(s.name.startswith('stm32') for s in b.socs)]))
         dt = parser.get_board_dt(config[CONF_BOARD])
+        # dump(dt.root)
         CORE.data[KEY_CORE][KEY_DEVICETREE] = dt
     return config
+
+def dump(node, level=0):
+    print(' ' * level, node.name, [str(p) for p in node.props.values()])
+    for c in node.nodes.values():
+        dump(c, level+1)
+
 
 
 def set_core_data(config: ConfigType) -> ConfigType:
