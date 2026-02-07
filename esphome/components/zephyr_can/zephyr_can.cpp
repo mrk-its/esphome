@@ -36,6 +36,8 @@ bool ZephyrCan::setup_internal() {
     ESP_LOGE(TAG, "cant calc timing");
     return false;
   }
+  ESP_LOGI(TAG, "CAN timing: phase_seg1: %d, phase_seg2: %d, prescaler: %d, prop_seg: %d, sjw: %d", timing.phase_seg1, timing.phase_seg2, timing.prescaler, timing.prop_seg, timing.sjw);
+
   if (can_set_timing(this->can_dev_, &timing) != 0) {
     ESP_LOGE(TAG, "cant set timing");
     return false;
