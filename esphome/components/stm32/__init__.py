@@ -100,6 +100,7 @@ async def to_code(config: ConfigType) -> None:
         "platform_packages",
         ["platformio/framework-zephyr@^3.40201.0"],
     )
+    cg.add(stm32_ns.setup_preferences())
 
     zephyr_to_code(config)
 
