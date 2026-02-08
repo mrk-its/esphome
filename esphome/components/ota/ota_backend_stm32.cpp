@@ -81,6 +81,9 @@ OTAResponseTypes STM32OTABackend::end() {
     ESP_LOGI(TAG, "OB: %08x, new OB: %08x", ob, new_ob);
     ret = flash_ex_op(this->flash_dev_, FLASH_STM32_EX_OP_OPTB_WRITE, (uint32_t) new_ob, NULL);
     ESP_LOGI(TAG, "OB write err: %d", ret);
+  } else {
+    ESP_LOGE(TAG, "FLASH_STM32_OPTION_BYTES not enabled");
+    return OTA_RESPONSE_ERROR_UNKNOWN;
   }
   return OTA_RESPONSE_OK;
 }
