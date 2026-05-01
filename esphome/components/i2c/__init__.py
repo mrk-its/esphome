@@ -96,17 +96,37 @@ def _bus_declare_type(value):
     raise NotImplementedError
 
 
+def _rp2040_i2c_controller(pin):
+    """Return the I2C controller number (0 or 1) for a given RP2040/RP2350 GPIO pin.
+
+    See RP2040 datasheet Table 2 (section 1.4.3, "GPIO Functions"):
+    https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf
+    See RP2350 datasheet Table 7 (section 9.4, "Function Select"):
+    https://datasheets.raspberrypi.com/rp2350/rp2350-datasheet.pdf
+    """
+    return (pin // 2) % 2
+
+
 def validate_config(config):
     if CORE.is_esp32:
         return cv.require_framework_version(
             esp_idf=cv.Version(5, 4, 2), esp32_arduino=cv.Version(3, 2, 1)
         )(config)
+    if CORE.is_rp2040:
+        sda_controller = _rp2040_i2c_controller(config[CONF_SDA])
+        scl_controller = _rp2040_i2c_controller(config[CONF_SCL])
+        if sda_controller != scl_controller:
+            raise cv.Invalid(
+                f"SDA pin GPIO{config[CONF_SDA]} is on I2C{sda_controller} but "
+                f"SCL pin GPIO{config[CONF_SCL]} is on I2C{scl_controller}. "
+                f"Both pins must be on the same I2C controller."
+            )
     return config
 
 
 def validate_zephyr_device_name(value):
     if value is None:
-        if CORE.is_nrf52 and zephyr_data()[KEY_BOARD] not in ["xiao_ble"]:
+        if CORE.is_nrf52 and zephyr_data()[KEY_BOARD] != "xiao_ble":
             value = "i2c0"
         else:
             value = "i2c1"
@@ -190,6 +210,23 @@ def _final_validate(config):
         full_config
     ):
         raise cv.Invalid("Unique device_name properties are required")
+    if CORE.is_rp2040:
+        if len(full_config) > 2:
+            raise cv.Invalid(
+                "The maximum number of I2C interfaces for RP2040/RP2350 is 2"
+            )
+        if len(full_config) > 1:
+            controllers = [
+                _rp2040_i2c_controller(conf[CONF_SDA]) for conf in full_config
+            ]
+            if len(set(controllers)) != len(controllers):
+                raise cv.Invalid(
+                    "Multiple I2C buses are configured to use the same I2C controller. "
+                    "Each bus must use pins on a different controller. "
+                    "The I2C controller is determined by (gpio / 2) % 2: "
+                    "even pin pairs (0-1, 4-5, 8-9, ...) use I2C0, "
+                    "odd pin pairs (2-3, 6-7, 10-11, ...) use I2C1."
+                )
     if CORE.is_esp32 and get_esp32_variant() in ESP32_I2C_CAPABILITIES:
         variant = get_esp32_variant()
         max_num = ESP32_I2C_CAPABILITIES[variant]["NUM"]
@@ -235,13 +272,6 @@ async def to_code(config):
                             group1 {{
                                 psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
                                     <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
-                            }};
-                        }};
-                        {i2c}_sleep: {i2c}_sleep {{
-                            group1 {{
-                                psels = <NRF_PSEL(TWIM_SDA, {config[CONF_SDA] // 32}, {config[CONF_SDA] % 32})>,
-                                    <NRF_PSEL(TWIM_SCL, {config[CONF_SCL] // 32}, {config[CONF_SCL] % 32})>;
-                                low-power-enable;
                             }};
                         }};
                     }};

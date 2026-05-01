@@ -41,7 +41,7 @@ struct MD5_CTX_TYPE {
 namespace esphome {
 namespace md5 {
 
-class MD5Digest : public HashBase {
+class MD5Digest final : public HashBase {
  public:
   MD5Digest() = default;
   ~MD5Digest() override;

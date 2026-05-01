@@ -5,17 +5,23 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
+from PIL import Image as PILImage
 import pytest
 
 from esphome import config_validation as cv
 from esphome.components.image import (
+    CONF_ALPHA_CHANNEL,
+    CONF_INVERT_ALPHA,
+    CONF_OPAQUE,
     CONF_TRANSPARENCY,
     CONFIG_SCHEMA,
     get_all_image_metadata,
     get_image_metadata,
+    write_image,
 )
-from esphome.const import CONF_ID, CONF_RAW_DATA_ID, CONF_TYPE
+from esphome.const import CONF_DITHER, CONF_FILE, CONF_ID, CONF_RAW_DATA_ID, CONF_TYPE
 from esphome.core import CORE
 
 
@@ -238,7 +244,15 @@ def test_image_generation(
     main_cpp = generate_main(component_config_path("image_test.yaml"))
     assert "uint8_t_id[] PROGMEM = {0x24, 0x21, 0x24, 0x21" in main_cpp
     assert (
-        "cat_img = new image::Image(uint8_t_id, 32, 24, image::IMAGE_TYPE_RGB565, image::TRANSPARENCY_OPAQUE);"
+        "alignas(image::Image) static unsigned char image__cat_img__pstorage[sizeof(image::Image)];"
+        in main_cpp
+    )
+    assert (
+        "static image::Image *const cat_img = reinterpret_cast<image::Image *>(image__cat_img__pstorage);"
+        in main_cpp
+    )
+    assert (
+        "new(cat_img) image::Image(uint8_t_id, 32, 24, image::IMAGE_TYPE_RGB565, image::TRANSPARENCY_OPAQUE);"
         in main_cpp
     )
 
@@ -350,3 +364,119 @@ def test_get_all_image_metadata_empty() -> None:
         "get_all_image_metadata should always return a dict"
     )
     # Length could be 0 or more depending on what's in CORE at test time
+
+
+@pytest.fixture
+def mock_progmem_array():
+    """Mock progmem_array to avoid needing a proper ID object in tests."""
+    with patch("esphome.components.image.cg.progmem_array") as mock_progmem:
+        mock_progmem.return_value = MagicMock()
+        yield mock_progmem
+
+
+@pytest.mark.asyncio
+async def test_svg_with_mm_dimensions_succeeds(
+    component_config_path: Callable[[str], Path],
+    mock_progmem_array: MagicMock,
+) -> None:
+    """Test that SVG files with dimensions in mm are successfully processed."""
+    # Create a config for write_image without CONF_RESIZE
+    config = {
+        CONF_FILE: component_config_path("mm_dimensions.svg"),
+        CONF_TYPE: "BINARY",
+        CONF_TRANSPARENCY: CONF_OPAQUE,
+        CONF_DITHER: "NONE",
+        CONF_INVERT_ALPHA: False,
+        CONF_RAW_DATA_ID: "test_raw_data_id",
+    }
+
+    # This should succeed without raising an error
+    result = await write_image(config)
+
+    # Verify that write_image returns the expected tuple
+    assert isinstance(result, tuple), "write_image should return a tuple"
+    assert len(result) == 6, "write_image should return 6 values"
+
+    prog_arr, width, height, image_type, trans_value, frame_count = result
+
+    # Verify the dimensions are positive integers
+    # At 100 DPI, 10mm = ~39 pixels (10mm * 100dpi / 25.4mm_per_inch)
+    assert isinstance(width, int), "Width should be an integer"
+    assert isinstance(height, int), "Height should be an integer"
+    assert width > 0, "Width should be positive"
+    assert height > 0, "Height should be positive"
+    assert frame_count == 1, "Single image should have frame_count of 1"
+    # Verify we got reasonable dimensions from the mm-based SVG
+    assert 30 < width < 50, (
+        f"Width should be around 39 pixels for 10mm at 100dpi, got {width}"
+    )
+    assert 30 < height < 50, (
+        f"Height should be around 39 pixels for 10mm at 100dpi, got {height}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rgb565_alpha_animation_layout_per_frame(
+    tmp_path: Path,
+    mock_progmem_array: MagicMock,
+) -> None:
+    """RGB565+alpha animations must store each frame as a self-contained
+    [RGB plane | alpha plane] block. Animation::update_data_start_ steps frames
+    with a single per-frame stride, so any cross-frame layout (all RGB then all
+    alpha) makes the C++ alpha read land in the next frame's RGB bytes — that
+    was the regression behind issue #15999.
+    """
+    # Build a 2-frame APNG where each frame is a solid color with a known
+    # alpha. APNG preserves full RGBA per pixel (GIF only has 1-bit alpha so
+    # round-tripping mid-range alpha values does not work). Frame 0 is fully
+    # opaque red, frame 1 is fully transparent blue.
+    width = 4
+    height = 3
+    frame0 = PILImage.new("RGBA", (width, height), (255, 0, 0, 0xFF))
+    frame1 = PILImage.new("RGBA", (width, height), (0, 0, 255, 0x00))
+    apng_path = tmp_path / "anim.png"
+    frame0.save(
+        apng_path,
+        format="PNG",
+        save_all=True,
+        append_images=[frame1],
+        duration=100,
+        loop=0,
+    )
+
+    config = {
+        CONF_FILE: str(apng_path),
+        CONF_TYPE: "RGB565",
+        CONF_TRANSPARENCY: CONF_ALPHA_CHANNEL,
+        CONF_DITHER: "NONE",
+        CONF_INVERT_ALPHA: False,
+        CONF_RAW_DATA_ID: "test_raw_data_id",
+    }
+
+    _, _, _, _, _, frame_count = await write_image(config, all_frames=True)
+    assert frame_count == 2
+
+    # Recover the bytes handed to progmem_array. Signature is (id_, rhs).
+    _, raw_data = mock_progmem_array.call_args.args
+    data = [int(x) for x in raw_data]
+
+    rgb_size = width * height * 2
+    alpha_size = width * height
+    frame_size = rgb_size + alpha_size
+    assert len(data) == frame_size * frame_count, (
+        "RGB565+alpha animation buffer must be (RGB + alpha) per frame, not "
+        "all RGB followed by all alpha"
+    )
+
+    # Frame 0: RGB plane is red, alpha plane is 0xFF. Frame 1: alpha plane is
+    # 0x00. If the layout regresses to [all RGB | all alpha], the alpha bytes
+    # would all land at the tail of the buffer and the per-frame slices below
+    # would point at RGB565 noise instead.
+    frame0_alpha = data[rgb_size : rgb_size + alpha_size]
+    frame1_alpha = data[frame_size + rgb_size : frame_size + rgb_size + alpha_size]
+    assert all(a == 0xFF for a in frame0_alpha), (
+        f"Frame 0 alpha plane should be opaque, got {frame0_alpha}"
+    )
+    assert all(a == 0x00 for a in frame1_alpha), (
+        f"Frame 1 alpha plane should be transparent, got {frame1_alpha}"
+    )
