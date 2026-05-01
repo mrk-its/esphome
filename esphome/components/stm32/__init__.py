@@ -98,7 +98,12 @@ async def to_code(config: ConfigType) -> None:
 
     cg.add_platformio_option(
         "platform_packages",
-        ["platformio/framework-zephyr@^3.40201.0"],
+        # ["framework-zephyr=symlink:///home/mrk/repos/zephyr/@^3.40301.0"],
+        [
+            "framework-zephyr@git+https://github.com/mrk-its/zephyr.git#platformio-package"
+        ],
+        # ["platformio/framework-zephyr@^3.40201.0"],
+        # ["platformio/framework-zephyr@3.40209.0"],
     )
     cg.add(stm32_ns.setup_preferences())
 
