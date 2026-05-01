@@ -23,14 +23,14 @@ const uint32_t ZEPHYR_FLASH_BLOCK_SIZE = DT_PROP(FLASHMEM, write_block_size);
 const uint32_t ZEPHYR_FLASH_BLOCK_MASK = ZEPHYR_FLASH_BLOCK_SIZE - 1;
 const uint32_t ZEPHYR_ERASE_BLOCK_SIZE = DT_PROP(FLASHMEM, erase_block_size);
 
-class STM32OTABackend : public OTABackend {
+class STM32OTABackend final {
  public:
-  OTAResponseTypes begin(size_t image_size) override;
-  void set_update_md5(const char *md5) override;
-  OTAResponseTypes write(uint8_t *data, size_t len) override;
-  OTAResponseTypes end() override;
-  void abort() override;
-  bool supports_compression() override { return false; }
+  OTAResponseTypes begin(size_t image_size);
+  void set_update_md5(const char *md5);
+  OTAResponseTypes write(uint8_t *data, size_t len);
+  OTAResponseTypes end();
+  void abort();
+  bool supports_compression() { return false; }
 
  private:
   const device *flash_dev_{};
@@ -41,6 +41,7 @@ class STM32OTABackend : public OTABackend {
   md5::MD5Digest md5_{};
 };
 
+std::unique_ptr<STM32OTABackend> make_ota_backend();
 }  // namespace ota
 }  // namespace esphome
 

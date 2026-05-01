@@ -9,7 +9,7 @@ namespace ota {
 
 static const char *const TAG = "ota.stm32";
 
-std::unique_ptr<ota::OTABackend> make_ota_backend() { return make_unique<ota::STM32OTABackend>(); }
+std::unique_ptr<STM32OTABackend> make_ota_backend() { return make_unique<STM32OTABackend>(); }
 
 OTAResponseTypes STM32OTABackend::begin(size_t image_size) {
 #define FLASHDEV DT_NODELABEL(flash)
