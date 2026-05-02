@@ -85,6 +85,9 @@ async def to_code(config: ConfigType) -> None:
     # zephyr_add_prj_conf("USE_STM32_HAL_HASH", True)
     # zephyr_add_prj_conf("USE_STM32_HAL_HASH_EX", True)
 
+    zephyr_add_prj_conf("ENTROPY_GENERATOR", True)
+    zephyr_add_prj_conf("TEST_RANDOM_GENERATOR", True)
+
     cg.add_platformio_option("board", config[CONF_BOARD])
     cg.add_platformio_option("monitor_speed", "115200")
     cg.add_platformio_option("upload_protocol", "stlink")
