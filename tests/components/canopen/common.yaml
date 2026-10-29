@@ -1,0 +1,31 @@
+canopen:
+  - id: canopen_node
+    canbus_id: can_bus
+    node_id: 0x10
+    heartbeat_interval: 1s
+    heartbeat_clients:
+      - node_id: 0x01
+        timeout: 3s
+      - node_id: 0x02
+        timeout: 5s
+    on_node_event:
+      - logger.log:
+          format: "node 0x%02x %s, %s"
+          args:
+            - node_id
+            - esphome::canopen::node_event_to_string(event)
+            - esphome::canopen::nmt_state_to_string(state)
+      - if:
+          condition:
+            lambda: "return event == esphome::canopen::NodeEvent::NODE_EVENT_OFFLINE;"
+          then:
+            - logger.log: "a monitored node went offline"
+
+interval:
+  - interval: 10s
+    then:
+      - lambda: |-
+          if (!id(canopen_node).is_node_online(0x01))
+            ESP_LOGW("canopen_test", "node 0x01 offline");
+          ESP_LOGD("canopen_test", "node 0x02: %s",
+                   esphome::canopen::nmt_state_to_string(id(canopen_node).get_node_state(0x02)));
