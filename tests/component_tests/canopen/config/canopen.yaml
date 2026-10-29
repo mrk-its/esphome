@@ -30,3 +30,17 @@ canopen:
       - logger.log: "heartbeat"
     on_emcy:
       - logger.log: "emcy"
+
+script:
+  - id: sdo_test
+    then:
+      - canopen.sdo_write:
+          node_id: 0x01
+          index: 0x1017
+          value: -1
+          size: 2
+          on_error:
+            - logger.log: "error"
+      - canopen.nmt:
+          node_id: 0x01
+          command: pre_operational

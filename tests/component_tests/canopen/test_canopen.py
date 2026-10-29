@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from esphome.components.canopen import CONFIG_SCHEMA
+from esphome.components.canopen import CONFIG_SCHEMA, SDO_WRITE_SCHEMA
 import esphome.config_validation as cv
 
 
@@ -30,6 +30,12 @@ def test_codegen(
         "add_on_emcy_callback",
     ):
         assert f"canopen_node->{callback}(" in main_cpp
+    assert "canopen_node->set_response_timeout(500);" in main_cpp
+    # sdo_write: negative values are sent as two's complement in `size` bytes
+    assert "canopen::SDOWriteAction<>" in main_cpp
+    assert "set_value([]() -> uint32_t {\n    return 65535;\n});" in main_cpp
+    assert "set_size(2);" in main_cpp
+    assert "set_command(canopen::NMTCommand::NMT_COMMAND_PRE_OPERATIONAL);" in main_cpp
 
 
 def test_defaults() -> None:
@@ -69,3 +75,31 @@ def test_heartbeat_interval_fits_uint16(interval: str, valid: bool) -> None:
     else:
         with pytest.raises(cv.Invalid, match="at most"):
             CONFIG_SCHEMA(config)
+
+
+SDO_WRITE = {"id": "canopen_node", "node_id": 1, "index": 0x1017}
+
+
+@pytest.mark.parametrize(
+    ("value", "size", "valid"),
+    [
+        (255, 1, True),
+        (256, 1, False),
+        (-128, 1, True),
+        (-129, 1, False),
+        (65535, 2, True),
+        (0xFFFFFFFF, 4, True),
+    ],
+)
+def test_sdo_write_value_fits_size(value: int, size: int, valid: bool) -> None:
+    config = {**SDO_WRITE, "value": value, "size": size}
+    if valid:
+        SDO_WRITE_SCHEMA(config)
+    else:
+        with pytest.raises(cv.Invalid, match="doesn't fit"):
+            SDO_WRITE_SCHEMA(config)
+
+
+def test_sdo_write_size() -> None:
+    with pytest.raises(cv.Invalid):
+        SDO_WRITE_SCHEMA({**SDO_WRITE, "value": 1, "size": 3})
