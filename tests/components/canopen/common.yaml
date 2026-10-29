@@ -20,6 +20,23 @@ canopen:
             lambda: "return event == esphome::canopen::NodeEvent::NODE_EVENT_OFFLINE;"
           then:
             - logger.log: "a monitored node went offline"
+    on_heartbeat:
+      - lambda: |-
+          if (state == esphome::canopen::NMTState::NMT_STATE_BOOTUP)
+            ESP_LOGI("canopen_test", "node 0x%02x booted", node_id);
+    on_emcy:
+      - logger.log:
+          format: "EMCY node 0x%02x: 0x%04x"
+          args: [node_id, emergency.error_code]
+
+esphome:
+  on_boot:
+    - lambda: |-
+        id(canopen_node).add_frame_listener(0x180, 0x780, +[](void *, uint32_t can_id, const uint8_t *data, uint8_t len) {
+          ESP_LOGD("canopen_test", "TPDO1 0x%03x, %u bytes", (unsigned) can_id, len);
+        }, nullptr);
+        const uint8_t data[2] = {0x01, 0x02};
+        id(canopen_node).send_frame(0x210, data, sizeof(data));
 
 interval:
   - interval: 10s

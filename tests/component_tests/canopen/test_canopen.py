@@ -17,14 +17,19 @@ def test_codegen(
     generate_main: Callable[[str | Path], str],
     component_config_path: Callable[[str], Path],
 ) -> None:
-    """Heartbeat clients become monitor_node() calls, on_node_event a callback."""
+    """Heartbeat clients become monitor_node() calls, triggers become callbacks."""
     main_cpp = generate_main(component_config_path("canopen.yaml"))
 
     assert "canopen::CANopenComponent(16)" in main_cpp
     assert "canopen_node->set_heartbeat_interval(2000);" in main_cpp
     assert "canopen_node->monitor_node(1, 3000);" in main_cpp
     assert "canopen_node->monitor_node(2, 500);" in main_cpp
-    assert "canopen_node->add_on_node_event_callback(" in main_cpp
+    for callback in (
+        "add_on_node_event_callback",
+        "add_on_heartbeat_callback",
+        "add_on_emcy_callback",
+    ):
+        assert f"canopen_node->{callback}(" in main_cpp
 
 
 def test_defaults() -> None:

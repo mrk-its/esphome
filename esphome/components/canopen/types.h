@@ -2,6 +2,8 @@
 
 // Public CANopen types for lambdas and other components. No CANopenNode headers here.
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace esphome::canopen {
@@ -24,5 +26,53 @@ const char *nmt_state_to_string(NMTState state);
 enum class NodeEvent : uint8_t { NODE_EVENT_ONLINE, NODE_EVENT_OFFLINE, NODE_EVENT_NMT_CHANGED, NODE_EVENT_RESET };
 
 const char *node_event_to_string(NodeEvent event);
+
+// raw CAN frame listener (see CANopenComponent::add_frame_listener()); data is valid only during the call
+using FrameCallback = void (*)(void *context, uint32_t can_id, const uint8_t *data, uint8_t len);
+
+// EMCY frame (CiA 301): error code, error register (0x1001), manufacturer-specific bytes
+struct Emergency {
+  uint16_t error_code;
+  uint8_t error_register;
+  std::array<uint8_t, 5> manufacturer_data;
+};
+
+// Heartbeat frame: COB-ID 0x700 + node (1..127), 1 byte. Returns false for any other frame.
+inline bool decode_heartbeat(uint32_t can_id, const uint8_t *data, size_t len, uint8_t &node, NMTState &state) {
+  if (can_id < 0x701 || can_id > 0x77F || len != 1)
+    return false;
+  node = can_id - 0x700;
+  // bit 7 is the node guarding toggle bit, always 0 in a heartbeat
+  switch (data[0] & 0x7F) {
+    case 0:
+      state = NMTState::NMT_STATE_BOOTUP;
+      break;
+    case 4:
+      state = NMTState::NMT_STATE_STOPPED;
+      break;
+    case 5:
+      state = NMTState::NMT_STATE_OPERATIONAL;
+      break;
+    case 127:
+      state = NMTState::NMT_STATE_PRE_OPERATIONAL;
+      break;
+    default:
+      state = NMTState::NMT_STATE_UNKNOWN;
+      break;
+  }
+  return true;
+}
+
+// EMCY frame: COB-ID 0x80 + node (1..127; 0x80 itself is SYNC), 8 bytes. Returns false for any other frame.
+inline bool decode_emcy(uint32_t can_id, const uint8_t *data, size_t len, uint8_t &node, Emergency &emcy) {
+  if (can_id < 0x81 || can_id > 0xFF || len != 8)
+    return false;
+  node = can_id - 0x80;
+  emcy.error_code = data[0] | (data[1] << 8);
+  emcy.error_register = data[2];
+  for (size_t i = 0; i < emcy.manufacturer_data.size(); i++)
+    emcy.manufacturer_data[i] = data[3 + i];
+  return true;
+}
 
 }  // namespace esphome::canopen
