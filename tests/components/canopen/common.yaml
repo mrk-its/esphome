@@ -46,3 +46,30 @@ interval:
             ESP_LOGW("canopen_test", "node 0x01 offline");
           ESP_LOGD("canopen_test", "node 0x02: %s",
                    esphome::canopen::nmt_state_to_string(id(canopen_node).get_node_state(0x02)));
+
+script:
+  - id: canopen_sdo
+    then:
+      - canopen.sdo_write:
+          node_id: 0x01
+          index: 0x1017
+          value: 1000
+          size: 2
+          on_success:
+            - logger.log: "heartbeat time set"
+          on_error:
+            - logger.log:
+                format: "sdo_write: %s, abort 0x%08x"
+                args: ["esphome::canopen::sdo_result_to_string(result)", "(unsigned) abort_code"]
+      - canopen.sdo_write:
+          node_id: !lambda "return 0x02;"
+          index: 0x6040
+          value: !lambda "return 0x0F;"
+      - canopen.nmt:
+          node_id: 0
+          command: start
+      - lambda: |-
+          id(canopen_node).read_sdo<uint32_t>(0x01, 0x1018, 1, +[](void *, const esphome::canopen::SDOReply &reply) {
+            if (reply.ok())
+              ESP_LOGI("canopen_test", "vendor id 0x%08x", (unsigned) reply.value);
+          }, nullptr);
