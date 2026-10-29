@@ -319,6 +319,8 @@ def highlight(s):
         # Shared C wire header (byte-identical with the co-processor firmware);
         # these are protocol constants and constexpr is C++-only.
         "esphome/components/esp32_hosted/esp_now_hosted_rpc.h",
+        # CANopenNode's C target header: the stack checks these with #if
+        "esphome/components/canopen/canopennode_port/CO_driver_target.h",
     ],
 )
 def lint_no_defines(fname, match):
@@ -941,6 +943,8 @@ def lint_relative_py_import(fname: Path, line, col, content):
         "esphome/components/esp32_hosted/esp_now_hosted_rpc.h",
         # C header shared with the vendored decoder
         "esphome/components/esphome/ota/ota_esphome_inflate.h",
+        # CANopenNode's C target header (included by the stack's C sources)
+        "esphome/components/canopen/canopennode_port/CO_driver_target.h",
     ],
 )
 def lint_namespace(fname: Path, content: str) -> str | None:
