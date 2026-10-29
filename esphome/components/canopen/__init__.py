@@ -20,6 +20,8 @@ CONF_NODE_ID = "node_id"
 CONF_HEARTBEAT_INTERVAL = "heartbeat_interval"
 CONF_HEARTBEAT_CLIENTS = "heartbeat_clients"
 CONF_ON_NODE_EVENT = "on_node_event"
+CONF_ON_HEARTBEAT = "on_heartbeat"
+CONF_ON_EMCY = "on_emcy"
 CONF_CANOPENNODE_PATH = "canopennode_path"
 
 # CANopenNode upstream + library.json + SDO server block size option (branch esphome), pinned to a commit
@@ -33,12 +35,26 @@ ns = cg.esphome_ns.namespace("canopen")
 CANopenComponent = ns.class_("CANopenComponent", cg.Component)
 NMTState = ns.enum("NMTState", is_class=True)
 NodeEvent = ns.enum("NodeEvent", is_class=True)
+Emergency = ns.struct("Emergency")
 
 CALLBACK_AUTOMATIONS = (
     automation.CallbackAutomation(
         CONF_ON_NODE_EVENT,
         "add_on_node_event_callback",
         [(cg.uint8, "node_id"), (NodeEvent, "event"), (NMTState, "state")],
+    ),
+    automation.CallbackAutomation(
+        CONF_ON_HEARTBEAT,
+        "add_on_heartbeat_callback",
+        [(cg.uint8, "node_id"), (NMTState, "state")],
+    ),
+    automation.CallbackAutomation(
+        CONF_ON_EMCY,
+        "add_on_emcy_callback",
+        [
+            (cg.uint8, "node_id"),
+            (Emergency.operator("const").operator("ref"), "emergency"),
+        ],
     ),
 )
 
@@ -81,6 +97,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_HEARTBEAT_CLIENTS, []): cv.ensure_list(HB_CLIENT_SCHEMA),
             # events of the heartbeat_clients nodes (online, offline, NMT changed, reset)
             cv.Optional(CONF_ON_NODE_EVENT): automation.validate_automation({}),
+            # every heartbeat / EMCY frame on the bus, any node
+            cv.Optional(CONF_ON_HEARTBEAT): automation.validate_automation({}),
+            cv.Optional(CONF_ON_EMCY): automation.validate_automation({}),
             # local CANopenNode checkout instead of CANOPENNODE_SOURCE (development)
             cv.Optional(CONF_CANOPENNODE_PATH): absolute_path,
         }

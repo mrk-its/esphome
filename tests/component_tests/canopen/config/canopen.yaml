@@ -26,3 +26,7 @@ canopen:
         timeout: 500ms
     on_node_event:
       - logger.log: "node event"
+    on_heartbeat:
+      - logger.log: "heartbeat"
+    on_emcy:
+      - logger.log: "emcy"
