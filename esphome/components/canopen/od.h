@@ -26,6 +26,9 @@ class ObjectDictionary {
   void add_array(uint16_t index, OD_attr_t attr, uint8_t *count, void *data, OD_size_t elem_len, uint8_t n);
   // RECORD: subs are looked up by subindex, so sub0 (highest subindex, uint8_t) is passed like the others
   void add_record(uint16_t index, std::initializer_list<RecordSub> subs);
+  // read-only VISIBLE_STRING VAR. Without ODA_STR the SDO server indicates the exact size (short strings go
+  // expedited). An empty string is one zero byte: CANopenNode aborts zero-length uploads.
+  void add_string(uint16_t index, const char *str);
 
   // Builds the entry list. Entries can't be added after this.
   void finalize();

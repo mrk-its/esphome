@@ -24,6 +24,10 @@ canopen:
         timeout: 3s
       - node_id: 0x02
         timeout: 500ms
+    identity:
+      vendor_id: 0x12345678
+      product_code: 0x2A
+    hardware_version: rev B
     on_node_event:
       - logger.log: "node event"
     on_heartbeat:
