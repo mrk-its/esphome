@@ -8,6 +8,14 @@ canopen:
         timeout: 3s
       - node_id: 0x02
         timeout: 5s
+    identity:
+      vendor_id: 0x12345678
+      product_code: 0x2A
+      revision_number: 0x00010002
+      serial_number: 0x1
+    device_name: canopen test node
+    hardware_version: rev B
+    software_version: "1.0"
     on_node_event:
       - logger.log:
           format: "node 0x%02x %s, %s"

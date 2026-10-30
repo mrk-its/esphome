@@ -34,8 +34,14 @@ extern "C" {
 #endif
 
 /* Stack configuration: only what the component uses. Services whose default is on but whose sources aren't built
- * (LEDs, LSS, storage) or that aren't used yet (TIME, SYNC, PDO) are turned off; the SDO server is never created
- * (CNT_SDO_SRV = 0), the other services default to off. */
+ * (LEDs, LSS, storage) or that aren't used yet (TIME, SYNC, PDO) are turned off, the other services default to off.
+ * The SDO server is segmented only: block transfer needs a buffer of at least 900 bytes. */
+#ifndef CO_CONFIG_SDO_SRV
+#define CO_CONFIG_SDO_SRV (CO_CONFIG_SDO_SRV_SEGMENTED)
+#endif
+#ifndef CO_CONFIG_SDO_SRV_BUFFER_SIZE
+#define CO_CONFIG_SDO_SRV_BUFFER_SIZE 32
+#endif
 #ifndef CO_CONFIG_NMT
 #define CO_CONFIG_NMT (CO_CONFIG_NMT_CALLBACK_CHANGE)
 #endif

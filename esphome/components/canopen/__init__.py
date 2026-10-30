@@ -3,10 +3,12 @@ from pathlib import Path
 from esphome import automation
 import esphome.codegen as cg
 from esphome.components.canbus import CanbusComponent
+from esphome.components.const import CONF_SERIAL_NUMBER
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_COMMAND,
     CONF_ID,
+    CONF_IDENTITY,
     CONF_INDEX,
     CONF_ON_ERROR,
     CONF_ON_SUCCESS,
@@ -35,6 +37,12 @@ CONF_ON_EMCY = "on_emcy"
 CONF_CANOPENNODE_PATH = "canopennode_path"
 CONF_RESPONSE_TIMEOUT = "response_timeout"
 CONF_SUBINDEX = "subindex"
+CONF_VENDOR_ID = "vendor_id"
+CONF_PRODUCT_CODE = "product_code"
+CONF_REVISION_NUMBER = "revision_number"
+CONF_DEVICE_NAME = "device_name"
+CONF_HARDWARE_VERSION = "hardware_version"
+CONF_SOFTWARE_VERSION = "software_version"
 
 # CANopenNode upstream + library.json + SDO server block size option (branch esphome), pinned to a commit
 CANOPENNODE_SOURCE = "https://github.com/mrk-its/CANopenNode.git#9ff367b8205d746a84111b38e01ace3feaffb401"
@@ -171,6 +179,16 @@ UINT16_MS = cv.All(
     cv.Range(min=cv.TimePeriod(milliseconds=1), max=cv.TimePeriod(milliseconds=65535)),
 )
 
+# 0x1018; vendor ids are assigned by CiA
+IDENTITY_SCHEMA = cv.Schema(
+    {
+        cv.Optional(CONF_VENDOR_ID, default=0): cv.hex_uint32_t,
+        cv.Optional(CONF_PRODUCT_CODE, default=0): cv.hex_uint32_t,
+        cv.Optional(CONF_REVISION_NUMBER, default=0): cv.hex_uint32_t,
+        cv.Optional(CONF_SERIAL_NUMBER, default=0): cv.hex_uint32_t,
+    }
+)
+
 HB_CLIENT_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_NODE_ID): cv.All(cv.int_, cv.Range(min=1, max=127)),
@@ -201,8 +219,13 @@ CONFIG_SCHEMA = cv.All(
             # every heartbeat / EMCY frame on the bus, any node
             cv.Optional(CONF_ON_HEARTBEAT): automation.validate_automation({}),
             cv.Optional(CONF_ON_EMCY): automation.validate_automation({}),
-            # local CANopenNode checkout instead of CANOPENNODE_SOURCE (development)
             cv.Optional(CONF_RESPONSE_TIMEOUT, "500ms"): UINT16_MS,
+            cv.Optional(CONF_IDENTITY, default={}): IDENTITY_SCHEMA,
+            # 0x1008 (default: the node's name), 0x1009, 0x100A (default: the ESPHome version)
+            cv.Optional(CONF_DEVICE_NAME): cv.string,
+            cv.Optional(CONF_HARDWARE_VERSION): cv.string,
+            cv.Optional(CONF_SOFTWARE_VERSION): cv.string,
+            # local CANopenNode checkout instead of CANOPENNODE_SOURCE (development)
             cv.Optional(CONF_CANOPENNODE_PATH): absolute_path,
         }
     ).extend(cv.COMPONENT_SCHEMA),
@@ -251,6 +274,22 @@ async def to_code(config):
     cg.add(var.set_canbus(canbus))
     cg.add(var.set_heartbeat_interval(config[CONF_HEARTBEAT_INTERVAL]))
     cg.add(var.set_response_timeout(config[CONF_RESPONSE_TIMEOUT]))
+    identity = config[CONF_IDENTITY]
+    cg.add(
+        var.set_identity(
+            identity[CONF_VENDOR_ID],
+            identity[CONF_PRODUCT_CODE],
+            identity[CONF_REVISION_NUMBER],
+            identity[CONF_SERIAL_NUMBER],
+        )
+    )
+    for key, setter in (
+        (CONF_DEVICE_NAME, var.set_device_name),
+        (CONF_HARDWARE_VERSION, var.set_hardware_version),
+        (CONF_SOFTWARE_VERSION, var.set_software_version),
+    ):
+        if key in config:
+            cg.add(setter(config[key]))
     for client in config[CONF_HEARTBEAT_CLIENTS]:
         cg.add(
             var.monitor_node(

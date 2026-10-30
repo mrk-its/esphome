@@ -1,6 +1,7 @@
 #include "od.h"
 
 #include <algorithm>
+#include <cstring>
 
 #include "esphome/core/log.h"
 
@@ -35,6 +36,13 @@ void ObjectDictionary::add_record(uint16_t index, std::initializer_list<RecordSu
   for (const auto &s : subs)
     record.push_back(OD_obj_record_t{s.data, s.sub, multi_byte(s.attr, s.len), s.len});
   this->add_entry_(index, record.size(), ODT_REC, record.data());
+}
+
+void ObjectDictionary::add_string(uint16_t index, const char *str) {
+  OD_size_t len = std::strlen(str);
+  // no ODA_MB: a string has no byte order
+  this->vars_.push_back(OD_obj_var_t{const_cast<char *>(str), ODA_SDO_R, len > 0 ? len : 1});
+  this->add_entry_(index, 1, ODT_VAR, &this->vars_.back());
 }
 
 void ObjectDictionary::finalize() {

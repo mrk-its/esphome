@@ -33,6 +33,11 @@ def test_codegen(
     ):
         assert f"canopen_node->{callback}(" in main_cpp
     assert "canopen_node->set_response_timeout(500);" in main_cpp
+    # identity: unset fields are 0; device name / software version keep their C++ defaults
+    assert "canopen_node->set_identity(0x12345678, 0x2A, 0x00, 0x00);" in main_cpp
+    assert 'canopen_node->set_hardware_version("rev B");' in main_cpp
+    assert "set_device_name(" not in main_cpp
+    assert "set_software_version(" not in main_cpp
     # sdo_write: negative values are sent as two's complement in `size` bytes
     assert "canopen::SDOWriteAction<>" in main_cpp
     assert "set_value([]() -> uint32_t {\n    return 65535;\n});" in main_cpp
@@ -44,6 +49,12 @@ def test_defaults() -> None:
     config = CONFIG_SCHEMA(_config())
     assert config["heartbeat_interval"].total_milliseconds == 5000
     assert config["heartbeat_clients"] == []
+    assert config["identity"] == {
+        "vendor_id": 0,
+        "product_code": 0,
+        "revision_number": 0,
+        "serial_number": 0,
+    }
 
 
 @pytest.mark.parametrize("node_id", [0, 128])

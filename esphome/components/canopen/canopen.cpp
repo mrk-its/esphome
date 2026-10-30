@@ -5,6 +5,7 @@
 #include "esphome/core/application.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
+#include "esphome/core/version.h"
 
 namespace esphome::canopen {
 
@@ -99,6 +100,14 @@ void CANopenComponent::setup() {
   auto &od = this->od_;
   od.add_var(0x1000, ODA_SDO_R, &this->dev_type_, sizeof(this->dev_type_));
   od.add_var(0x1001, ODA_SDO_R, &this->err_reg_, sizeof(this->err_reg_));
+  if (this->device_name_ == nullptr)
+    this->device_name_ = App.get_name().c_str();
+  if (this->software_version_ == nullptr)
+    this->software_version_ = ESPHOME_VERSION;
+  od.add_string(0x1008, this->device_name_);
+  if (this->hardware_version_ != nullptr)
+    od.add_string(0x1009, this->hardware_version_);
+  od.add_string(0x100A, this->software_version_);
   od.add_var(0x1014, ODA_SDO_RW, &this->cob_emcy_, sizeof(this->cob_emcy_));
   od.add_var(0x1017, ODA_SDO_RW, &this->hb_producer_ms_, sizeof(this->hb_producer_ms_));
   uint8_t n_cons = this->hb_cons_.size();
@@ -106,6 +115,14 @@ void CANopenComponent::setup() {
     this->hb_cons_count_ = n_cons;
     od.add_array(0x1016, ODA_SDO_RW, &this->hb_cons_count_, this->hb_cons_.data(), sizeof(uint32_t), n_cons);
   }
+  od.add_record(0x1018, {{0, ODA_SDO_R, &this->identity_highest_sub_, 1},
+                         {1, ODA_SDO_R, &this->identity_[0], 4},
+                         {2, ODA_SDO_R, &this->identity_[1], 4},
+                         {3, ODA_SDO_R, &this->identity_[2], 4},
+                         {4, ODA_SDO_R, &this->identity_[3], 4}});
+  od.add_record(0x1200, {{0, ODA_SDO_R, &this->sdo_srv_highest_sub_, 1},
+                         {1, ODA_SDO_R, &this->sdo_srv_cob_rx_, 4},
+                         {2, ODA_SDO_R, &this->sdo_srv_cob_tx_, 4}});
 #ifdef USE_CANOPEN_SDO_CLIENT
   od.add_record(0x1280, {{0, ODA_SDO_R, &this->sdo_cli_highest_sub_, 1},
                          {1, ODA_SDO_RW, &this->sdo_cli_cob_tx_, 4},
@@ -124,6 +141,9 @@ void CANopenComponent::setup() {
   cfg.CNT_HB_CONS = n_cons ? 1 : 0;
   cfg.CNT_ARR_1016 = n_cons;
   cfg.ENTRY_H1016 = od.find(0x1016);
+  // the default SDO server (CiA 301: mandatory)
+  cfg.CNT_SDO_SRV = 1;
+  cfg.ENTRY_H1200 = od.find(0x1200);
 #ifdef USE_CANOPEN_SDO_CLIENT
   cfg.CNT_SDO_CLI = 1;
   cfg.ENTRY_H1280 = od.find(0x1280);
@@ -172,6 +192,13 @@ void CANopenComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "CANopen (CANopenNode):");
   ESP_LOGCONFIG(TAG, "  Node ID: 0x%02x", this->node_id_);
   ESP_LOGCONFIG(TAG, "  Heartbeat interval: %u ms", this->hb_producer_ms_);
+  ESP_LOGCONFIG(
+      TAG, "  Identity: vendor 0x%08" PRIx32 ", product 0x%08" PRIx32 ", revision 0x%08" PRIx32 ", serial 0x%08" PRIx32,
+      this->identity_[0], this->identity_[1], this->identity_[2], this->identity_[3]);
+  ESP_LOGCONFIG(TAG, "  Device name: %s, software version: %s", this->device_name_, this->software_version_);
+  if (this->hardware_version_ != nullptr) {
+    ESP_LOGCONFIG(TAG, "  Hardware version: %s", this->hardware_version_);
+  }
 #ifdef USE_CANOPEN_SDO_CLIENT
   ESP_LOGCONFIG(TAG, "  SDO client: response timeout %u ms", this->response_timeout_ms_);
 #endif
