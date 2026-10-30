@@ -15,6 +15,7 @@ from esphome.const import (
     CONF_VALUE,
 )
 from esphome.core import CORE
+import esphome.final_validate as fv
 from esphome.helpers import write_file_if_changed
 
 CODEOWNERS = ["@mrk-its"]
@@ -44,6 +45,8 @@ IDF_PORT_COMPONENT = "canopennode_port"
 
 ns = cg.esphome_ns.namespace("canopen")
 CANopenComponent = ns.class_("CANopenComponent", cg.Component)
+# base class of components that drive another node (canopen_node.h)
+CANopenNode = ns.class_("CANopenNode")
 NMTState = ns.enum("NMTState", is_class=True)
 NodeEvent = ns.enum("NodeEvent", is_class=True)
 Emergency = ns.struct("Emergency")
@@ -90,6 +93,49 @@ def enable_nmt_master() -> None:
     cg.add_define("USE_CANOPEN_NMT_MASTER")
     # callback change | master
     cg.add_build_flag("-DCO_CONFIG_NMT=0x03")
+
+
+# for components that drive another node (subclasses of CANopenNode), see register_node()
+CANOPEN_NODE_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(CONF_CANOPEN_ID): cv.use_id(CANopenComponent),
+        cv.Required(CONF_NODE_ID): cv.All(cv.int_, cv.Range(min=1, max=127)),
+    }
+)
+
+
+def final_validate_canopen_node(config):
+    """FINAL_VALIDATE_SCHEMA helper for CANOPEN_NODE_SCHEMA: the node can't be the hub's own node id."""
+    full_config = fv.full_config.get()
+    path = full_config.get_path_for_id(config[CONF_CANOPEN_ID])[:-1]
+    hub = full_config.get_config_for_path(path)
+    if hub[CONF_NODE_ID] == config[CONF_NODE_ID]:
+        raise cv.Invalid(
+            f"node_id {config[CONF_NODE_ID]} is the own id of canopen {config[CONF_CANOPEN_ID]}",
+            path=[CONF_NODE_ID],
+        )
+    return config
+
+
+async def register_node(
+    var, config, sdo: bool = False, nmt: bool = False, heartbeat_timeout=None
+):
+    """Codegen for a CANopenNode subclass built from CANOPEN_NODE_SCHEMA.
+
+    Compiles the parts of the hub the component uses (SDO client, NMT master) and, with a heartbeat_timeout
+    (TimePeriod, validated with UINT16_MS), monitors the node: its events reach the on_node_* hooks. The hub merges it with
+    heartbeat_clients, keeping the shortest timeout.
+    """
+    if sdo:
+        enable_sdo_client()
+    if nmt:
+        enable_nmt_master()
+    if heartbeat_timeout is not None:
+        hub = await cg.get_variable(config[CONF_CANOPEN_ID])
+        cg.add(
+            hub.monitor_node(config[CONF_NODE_ID], heartbeat_timeout.total_milliseconds)
+        )
+    return var
 
 
 CALLBACK_AUTOMATIONS = (
