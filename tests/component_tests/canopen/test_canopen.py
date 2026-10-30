@@ -44,7 +44,11 @@ def test_codegen(
     assert "canopen::SDOWriteAction<>" in main_cpp
     assert "set_value([]() -> uint32_t {\n    return 65535;\n});" in main_cpp
     assert "set_size(2);" in main_cpp
-    assert "set_command(canopen::NMTCommand::NMT_COMMAND_PRE_OPERATIONAL);" in main_cpp
+    # canopen.nmt: no action class, a static function calling the hub
+    assert (
+        "canopen_node->send_nmt(1, canopen::NMTCommand::NMT_COMMAND_PRE_OPERATIONAL);"
+        in main_cpp
+    )
 
 
 def test_defaults() -> None:

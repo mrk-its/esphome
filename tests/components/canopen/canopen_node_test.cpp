@@ -25,7 +25,7 @@ class RecordingNode : public CANopenNode {
   void on_node_online() override { this->calls.emplace_back("online"); }
   void on_node_offline() override { this->calls.emplace_back("offline"); }
   void on_node_nmt_changed(NMTState state) override {
-    this->calls.emplace_back(std::string("nmt ") + nmt_state_to_string(state));
+    this->calls.emplace_back(std::string("nmt ") + LOG_STR_ARG(nmt_state_to_string(state)));
   }
   void on_node_reset() override { this->calls.emplace_back("reset"); }
   void on_node_emcy(const Emergency &emergency) override { this->emcy_codes.push_back(emergency.error_code); }

@@ -152,4 +152,52 @@ TEST(CanopenOD, Errors) {
   EXPECT_FALSE(od.finalize());
 }
 
+// many entries of every kind, handlers set in between: the containers reallocate while the OD is built, and every
+// entry must still reach its own storage and handler
+TEST(CanopenOD, ManyEntries) {
+  static constexpr int N = 100;
+  uint32_t vars[N], elems[N][2], subs[N];
+  uint8_t counts[N], highest = 1;
+  CountingObject handlers[N];
+  ObjectDictionary od;
+  for (int i = 0; i < N; i++) {
+    vars[i] = i;
+    od.add_var(0x2000 + i, OD_READ_WRITE, &vars[i], 4);
+    od.add_array(0x3000 + i, OD_READ_WRITE, &counts[i], elems[i], 4, 2);
+    od.add_record(0x4000 + i, {{0, OD_READ, &highest, 1}, {1, OD_READ_WRITE, &subs[i], 4}});
+    od.set_object(0x2000 + i, &handlers[i]);
+  }
+  ASSERT_TRUE(od.finalize());
+
+  for (int i = 0; i < N; i++) {
+    uint32_t value = 0;
+    EXPECT_EQ(OD_get_u32(od.find(0x2000 + i), 0, &value, true), ODR_OK);
+    EXPECT_EQ(value, uint32_t(i));
+    uint32_t v = 1000 + i;
+    EXPECT_EQ(od.write(0x2000 + i, 0, &v, 4), OdResult::OD_RESULT_OK);
+    EXPECT_EQ(handlers[i].writes, 1);
+    EXPECT_EQ(vars[i], v);
+    EXPECT_EQ(od.write(0x3000 + i, 2, &v, 4), OdResult::OD_RESULT_OK);
+    EXPECT_EQ(elems[i][1], v);
+    EXPECT_EQ(od.write(0x4000 + i, 1, &v, 4), OdResult::OD_RESULT_OK);
+    EXPECT_EQ(subs[i], v);
+  }
+}
+
+TEST(CanopenOD, AfterFinalize) {
+  uint32_t a = 1, b = 2;
+  CountingObject handler;
+  ObjectDictionary od;
+  od.add_var(0x2000, OD_READ_WRITE, &a, 4);
+  ASSERT_TRUE(od.finalize());
+  // ignored: the entry list is fixed, and growing a container would move the objects CANopenNode points to
+  od.add_var(0x2001, OD_READ_WRITE, &b, 4);
+  od.set_object(0x2000, &handler);
+  EXPECT_EQ(od.find(0x2001), nullptr);
+  uint32_t v = 5;
+  EXPECT_EQ(od.write(0x2000, 0, &v, 4), OdResult::OD_RESULT_OK);
+  EXPECT_EQ(handler.writes, 0);
+  EXPECT_EQ(a, 5u);
+}
+
 }  // namespace esphome::canopen::testing

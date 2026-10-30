@@ -40,17 +40,4 @@ template<typename... Ts> class SDOWriteAction : public Action<Ts...>, public Par
 };
 #endif
 
-#ifdef USE_CANOPEN_NMT_MASTER
-template<typename... Ts> class NMTAction : public Action<Ts...>, public Parented<CANopenComponent> {
- public:
-  TEMPLATABLE_VALUE(uint8_t, node_id)
-  void set_command(NMTCommand command) { this->command_ = command; }
-
-  void play(const Ts &...x) override { this->parent_->send_nmt(this->node_id_.value(x...), this->command_); }
-
- protected:
-  NMTCommand command_{NMTCommand::NMT_COMMAND_START};
-};
-#endif
-
 }  // namespace esphome::canopen
