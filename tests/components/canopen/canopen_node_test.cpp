@@ -94,4 +94,27 @@ TEST(CanopenNode, ForwardsWithNodeIdAndContext) {
   current = nullptr;
 }
 
+// a profile with another base before CANopenNode, as components are (Component, CANopenNode)
+struct OtherBase {
+  virtual ~OtherBase() = default;
+  int data{0};
+};
+class MultiNode : public OtherBase, public CANopenNode {
+ public:
+  using CANopenNode::CANopenNode;
+};
+
+TEST(CanopenNode, FromContextWithOtherBases) {
+  TestHub hub;
+  MultiNode drive(&hub, 0x21);
+  static void *seen = nullptr;
+  seen = nullptr;
+
+  drive.read_sdo<uint16_t>(0x1017, 0, +[](void *context, const SDOReply &) { seen = context; });
+  ASSERT_NE(seen, nullptr);
+  // the default context is the CANopenNode subobject, not the start of MultiNode
+  EXPECT_NE(seen, static_cast<void *>(&drive));
+  EXPECT_EQ(CANopenNode::from_context<MultiNode>(seen), &drive);
+}
+
 }  // namespace esphome::canopen::testing
