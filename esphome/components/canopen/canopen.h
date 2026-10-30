@@ -75,6 +75,25 @@ class CANopenComponent : public Component {
   // isn't queued or retried, unlike CANopenNode's own frames.
   bool send_frame(uint32_t can_id, const uint8_t *data, uint8_t len);
 
+#ifdef USE_CANOPEN_PDO
+  // Our own PDOs (canopen.enable_pdo() in codegen). Before setup() only. The hub creates the communication and
+  // mapping records 0x1400 / 0x1600 (RPDO) and 0x1800 / 0x1A00 (TPDO) for PDO 0..n; PDOs that aren't configured stay
+  // disabled, and the records can be changed over SDO (CiA 301 order: disable, mapping, enable). COB-IDs are full CAN
+  // IDs (CANopenNode only adds the node id to a bare predefined base, 0x180 / 0x200 / ..., of PDO 0-3). Mapped
+  // objects need OD_TPDO / OD_RPDO; RPDO data reaches their handler (ObjectDictionary::set_object()). Event-driven
+  // transmission types (254, 255); PDOs only run in OPERATIONAL. A PDO configured without mappings starts disabled.
+  static constexpr uint8_t MAX_PDO = 32;
+  bool configure_tpdo(uint8_t n, uint32_t cob_id, const std::vector<PdoMapping> &mappings, uint16_t event_timer_ms = 0,
+                      uint16_t inhibit_time_100us = 0, uint8_t transmission_type = 254);
+  bool configure_rpdo(uint8_t n, uint32_t cob_id, const std::vector<PdoMapping> &mappings, uint16_t event_timer_ms = 0,
+                      uint8_t transmission_type = 254);
+  // sends TPDO n at the next processing
+  void request_tpdo(uint8_t n);
+  // sends the TPDO that maps index:sub (an entry with a handler, sub < 32). CANopenNode has one request flag per
+  // sub-entry: if several TPDOs map it, only the first one processed is sent.
+  bool request_tpdo(uint16_t index, uint8_t sub);
+#endif
+
 #ifdef USE_CANOPEN_SDO_CLIENT
   // SDO client (one channel, requests run one after another in FIFO order). Every request ends in exactly one
   // callback: accepted ones from loop() / frame processing after the transfer, rejected ones (queue full, invalid
@@ -144,6 +163,20 @@ class CANopenComponent : public Component {
   void abort_sdo_();
 #endif
   void check_frame_listener_(uint32_t can_id, uint32_t mask);
+#ifdef USE_CANOPEN_PDO
+  struct PdoParams {
+    uint32_t cob_id{0x80000000};  // not valid
+    uint8_t transmission_type{254};
+    uint16_t inhibit_time{0};  // TPDO only, 100 us
+    uint16_t event_timer{0};   // ms
+    uint8_t map_count{0};
+    std::array<uint32_t, 8> map{};
+  };
+  bool configure_pdo_(std::vector<PdoParams> &pdos, const char *kind, uint8_t n, uint32_t cob_id,
+                      const std::vector<PdoMapping> &mappings, uint16_t event_timer_ms, uint16_t inhibit_time_100us,
+                      uint8_t transmission_type);
+  void add_pdo_map_(uint16_t index, PdoParams &pdo);
+#endif
   void node_event_(uint8_t node_id, NodeEvent event, NMTState state);
 
   static void on_hb_started(uint8_t node_id, uint8_t idx, void *object);
@@ -194,6 +227,13 @@ class CANopenComponent : public Component {
   std::vector<uint8_t> sdo_rx_;  // READ/READ_DATA: received bytes
   uint8_t sdo_abort_node_{0};    // node of the last cancelled transfer, see ABORT_GUARD_MS
   uint32_t sdo_abort_ms_{0};
+#endif
+#ifdef USE_CANOPEN_PDO
+  // index = PDO number; the vectors are sized before setup() and not resized afterwards (the OD points into them)
+  std::vector<PdoParams> tpdos_;
+  std::vector<PdoParams> rpdos_;
+  uint8_t tpdo_comm_highest_{5};
+  uint8_t rpdo_comm_highest_{5};
 #endif
   LazyCallbackManager<void(uint8_t, NodeEvent, NMTState)> node_event_callback_;
   struct FrameListener {

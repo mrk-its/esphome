@@ -135,9 +135,14 @@ def test_register_node(
     assert "canopen_node->monitor_node(33, 1500);" in main_cpp
     assert "monitor_node(34" not in main_cpp
     defines = {define.name for define in CORE.defines}
-    assert {"USE_CANOPEN_SDO_CLIENT", "USE_CANOPEN_NMT_MASTER"} <= defines
+    assert {
+        "USE_CANOPEN_SDO_CLIENT",
+        "USE_CANOPEN_NMT_MASTER",
+        "USE_CANOPEN_PDO",
+    } <= defines
     assert "-DCO_CONFIG_SDO_CLI=0x0F" in CORE.build_flags
     assert "-DCO_CONFIG_NMT=0x03" in CORE.build_flags
+    assert "-DCO_CONFIG_PDO=0x402F" in CORE.build_flags
 
 
 def test_register_node_own_id(

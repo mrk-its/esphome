@@ -38,6 +38,13 @@ enum class NMTCommand : uint8_t {
   NMT_COMMAND_RESET_COMMUNICATION = 130,
 };
 
+// one object mapped into a PDO, see CANopenComponent::configure_tpdo() / configure_rpdo()
+struct PdoMapping {
+  uint16_t index;
+  uint8_t sub;
+  uint8_t bits;  // multiple of 8
+};
+
 enum class SDOResult : uint8_t {
   SDO_RESULT_SUCCESS,
   SDO_RESULT_ABORT,            // the server aborted the transfer, see abort_code

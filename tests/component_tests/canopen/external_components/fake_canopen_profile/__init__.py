@@ -31,6 +31,8 @@ async def to_code(config):
     hub = await cg.get_variable(config[canopen.CONF_CANOPEN_ID])
     var = cg.new_Pvariable(config[CONF_ID], hub, config[canopen.CONF_NODE_ID])
     await cg.register_component(var, config)
+    # our own PDOs (e.g. for process data the profile publishes)
+    canopen.enable_pdo()
     await canopen.register_node(
         var,
         config,

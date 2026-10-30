@@ -2,6 +2,7 @@
 from esphome.components.canopen import (
     add_canopennode_library,
     enable_nmt_master,
+    enable_pdo,
     enable_sdo_client,
 )
 from tests.testing_helpers import ComponentManifestOverride
@@ -13,6 +14,7 @@ def override_manifest(manifest: ComponentManifestOverride) -> None:
         add_canopennode_library()
         enable_sdo_client()
         enable_nmt_master()
+        enable_pdo()
 
     manifest.enable_codegen()
     manifest.to_code = to_code_testing

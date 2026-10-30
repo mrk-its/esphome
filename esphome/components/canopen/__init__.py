@@ -96,6 +96,16 @@ def enable_sdo_client() -> None:
     cg.add_build_flag("-DCO_CONFIG_CRC16=0x01")
 
 
+def enable_pdo() -> None:
+    """Compile our own PDOs (configure_tpdo(), configure_rpdo(), request_tpdo()): for components that use them."""
+    if not _enable_once("pdo"):
+        return
+    cg.add_define("USE_CANOPEN_PDO")
+    # RPDO | TPDO | RPDO timers | TPDO timers | OD IO access (RPDO data reaches the handlers) | OD dynamic (records
+    # changed over SDO); no SYNC
+    cg.add_build_flag("-DCO_CONFIG_PDO=0x402F")
+
+
 def enable_nmt_master() -> None:
     """Compile the NMT master (send_nmt()): for actions and components that use it."""
     if not _enable_once("nmt_master"):
