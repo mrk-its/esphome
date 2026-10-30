@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 from esphome.components.canopen import CONFIG_SCHEMA, SDO_WRITE_SCHEMA
+from esphome.config import read_config
 import esphome.config_validation as cv
+from esphome.core import CORE
 
 
 def _config(**kwargs):
@@ -103,3 +105,32 @@ def test_sdo_write_value_fits_size(value: int, size: int, valid: bool) -> None:
 def test_sdo_write_size() -> None:
     with pytest.raises(cv.Invalid):
         SDO_WRITE_SCHEMA({**SDO_WRITE, "value": 1, "size": 3})
+
+
+def test_register_node(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    """A profile gets the SDO client / NMT master it asks for and is monitored with its heartbeat_timeout."""
+    main_cpp = generate_main(component_config_path("profile.yaml"))
+
+    assert "fake_canopen_profile::FakeProfile(canopen_node, 33)" in main_cpp
+    assert "fake_canopen_profile::FakeProfile(canopen_node, 34)" in main_cpp
+    # merged with heartbeat_clients in monitor_node(); no heartbeat_timeout: not monitored
+    assert "canopen_node->monitor_node(33, 3000);" in main_cpp
+    assert "canopen_node->monitor_node(33, 1500);" in main_cpp
+    assert "monitor_node(34" not in main_cpp
+    defines = {define.name for define in CORE.defines}
+    assert {"USE_CANOPEN_SDO_CLIENT", "USE_CANOPEN_NMT_MASTER"} <= defines
+    assert "-DCO_CONFIG_SDO_CLI=0x0F" in CORE.build_flags
+    assert "-DCO_CONFIG_NMT=0x03" in CORE.build_flags
+
+
+def test_register_node_own_id(
+    component_config_path: Callable[[str], Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A profile can't drive the hub's own node id."""
+    CORE.config_path = component_config_path("profile_own_id.yaml")
+    assert read_config({}) is None
+    assert "node_id 16 is the own id of canopen canopen_node" in capsys.readouterr().out
