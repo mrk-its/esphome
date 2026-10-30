@@ -34,6 +34,8 @@ CONF_HEARTBEAT_CLIENTS = "heartbeat_clients"
 CONF_ON_NODE_EVENT = "on_node_event"
 CONF_ON_HEARTBEAT = "on_heartbeat"
 CONF_ON_EMCY = "on_emcy"
+CONF_ON_NMT_STATE_CHANGE = "on_nmt_state_change"
+CONF_NMT_STARTUP = "nmt_startup"
 CONF_CANOPENNODE_PATH = "canopennode_path"
 CONF_RESPONSE_TIMEOUT = "response_timeout"
 CONF_SUBINDEX = "subindex"
@@ -153,6 +155,11 @@ CALLBACK_AUTOMATIONS = (
         [(cg.uint8, "node_id"), (NodeEvent, "event"), (NMTState, "state")],
     ),
     automation.CallbackAutomation(
+        CONF_ON_NMT_STATE_CHANGE,
+        "add_on_nmt_state_callback",
+        [(NMTState, "state")],
+    ),
+    automation.CallbackAutomation(
         CONF_ON_HEARTBEAT,
         "add_on_heartbeat_callback",
         [(cg.uint8, "node_id"), (NMTState, "state")],
@@ -220,6 +227,12 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_ON_HEARTBEAT): automation.validate_automation({}),
             cv.Optional(CONF_ON_EMCY): automation.validate_automation({}),
             cv.Optional(CONF_RESPONSE_TIMEOUT, "500ms"): UINT16_MS,
+            # pre_operational: until an NMT master (or set_nmt_state()) starts the node
+            cv.Optional(CONF_NMT_STARTUP, default="operational"): cv.one_of(
+                "operational", "pre_operational", lower=True
+            ),
+            # our own NMT state
+            cv.Optional(CONF_ON_NMT_STATE_CHANGE): automation.validate_automation({}),
             cv.Optional(CONF_IDENTITY, default={}): IDENTITY_SCHEMA,
             # 0x1008 (default: the node's name), 0x1009, 0x100A (default: the ESPHome version)
             cv.Optional(CONF_DEVICE_NAME): cv.string,
@@ -274,6 +287,8 @@ async def to_code(config):
     cg.add(var.set_canbus(canbus))
     cg.add(var.set_heartbeat_interval(config[CONF_HEARTBEAT_INTERVAL]))
     cg.add(var.set_response_timeout(config[CONF_RESPONSE_TIMEOUT]))
+    if config[CONF_NMT_STARTUP] != "operational":
+        cg.add(var.set_start_operational(False))
     identity = config[CONF_IDENTITY]
     cg.add(
         var.set_identity(

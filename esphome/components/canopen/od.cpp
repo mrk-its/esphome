@@ -45,14 +45,55 @@ void ObjectDictionary::add_string(uint16_t index, const char *str) {
   this->add_entry_(index, 1, ODT_VAR, &this->vars_.back());
 }
 
-void ObjectDictionary::finalize() {
+void ObjectDictionary::set_extension_(uint16_t index, OD_extension_t *extension) {
+  for (auto &entry : this->entries_) {
+    if (entry.index == index) {
+      entry.extension = extension;
+      return;
+    }
+  }
+  ESP_LOGE(TAG, "OD 0x%04x: handler for a missing entry, ignored", index);
+}
+
+OdResult ObjectDictionary::write(uint16_t index, uint8_t sub, const void *data, size_t len) {
+  if (!this->finalized_)
+    return OdResult::OD_RESULT_DEVICE_STATE;
+  OD_IO_t io;
+  auto ret = static_cast<OdResult>(OD_getSub(OD_find(&this->od_, index), sub, &io, false));
+  if (ret != OdResult::OD_RESULT_OK)
+    return ret;
+  if ((io.stream.attribute & ODA_SDO_W) == 0)
+    return OdResult::OD_RESULT_READ_ONLY;
+  if (io.stream.dataLength == 0) {
+    // no fixed size (domain): the whole write, as an SDO client indicates it
+    io.stream.dataLength = len;
+  } else if (len > io.stream.dataLength) {
+    return OdResult::OD_RESULT_DATA_LONG;
+  } else if (len < io.stream.dataLength) {
+    return OdResult::OD_RESULT_DATA_SHORT;
+  }
+  OD_size_t written = 0;
+  ret = static_cast<OdResult>(io.write(&io.stream, data, len, &written));
+  // all data was given: a handler asking for more means the value was too short
+  return ret == OdResult::OD_RESULT_PARTIAL ? OdResult::OD_RESULT_DATA_SHORT : ret;
+}
+
+bool ObjectDictionary::finalize() {
   std::sort(this->entries_.begin(), this->entries_.end(),
             [](const OD_entry_t &a, const OD_entry_t &b) { return a.index < b.index; });
+  bool ok = true;
+  for (size_t i = 1; i < this->entries_.size(); i++) {
+    if (this->entries_[i].index == this->entries_[i - 1].index) {
+      ESP_LOGE(TAG, "OD 0x%04x added twice", this->entries_[i].index);
+      ok = false;
+    }
+  }
   this->od_.size = this->entries_.size();
   // OD_find() expects a blank last element
   this->entries_.push_back(OD_entry_t{0, 0, 0, nullptr, nullptr});
   this->od_.list = this->entries_.data();
   this->finalized_ = true;
+  return ok;
 }
 
 }  // namespace esphome::canopen

@@ -50,6 +50,14 @@ TEST(CanopenNode, HooksForOwnNodeOnly) {
   EXPECT_TRUE(other.emcy_codes.empty());
 }
 
+TEST(CanopenHub, NmtStateBeforeSetup) {
+  TestHub hub;
+  EXPECT_EQ(hub.get_nmt_state(), NMTState::NMT_STATE_UNKNOWN);
+  EXPECT_FALSE(hub.set_nmt_state(NMTState::NMT_STATE_OPERATIONAL));
+  uint8_t value = 1;
+  EXPECT_EQ(hub.write_od(0x1001, 0, &value, 1), OdResult::OD_RESULT_DEVICE_STATE);
+}
+
 TEST(CanopenNode, NodeIdAndUnmonitoredState) {
   TestHub hub;
   RecordingNode drive(&hub, 0x21);

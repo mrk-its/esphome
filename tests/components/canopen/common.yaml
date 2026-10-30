@@ -16,6 +16,13 @@ canopen:
     device_name: canopen test node
     hardware_version: rev B
     software_version: "1.0"
+    nmt_startup: pre_operational
+    on_nmt_state_change:
+      - if:
+          condition:
+            lambda: "return state == esphome::canopen::NMTState::NMT_STATE_PRE_OPERATIONAL;"
+          then:
+            - lambda: "id(canopen_node).set_nmt_state(esphome::canopen::NMTState::NMT_STATE_OPERATIONAL);"
     on_node_event:
       - logger.log:
           format: "node 0x%02x %s, %s"
