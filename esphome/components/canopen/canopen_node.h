@@ -23,6 +23,13 @@ class CANopenNode {
   NMTState get_nmt_state() const { return this->canopen_->get_node_state(this->node_id_); }
   bool is_operational() const { return this->is_online() && this->get_nmt_state() == NMTState::NMT_STATE_OPERATIONAL; }
 
+  // The default SDO context is this CANopenNode subobject, which isn't the address of a subclass that has other
+  // bases (e.g. `class Drive : public Component, public CANopenNode`): get the subclass back with
+  // CANopenNode::from_context<Drive>(context), not a direct static_cast from void *.
+  template<typename T> static T *from_context(void *context) {
+    return static_cast<T *>(static_cast<CANopenNode *>(context));
+  }
+
 #ifdef USE_CANOPEN_SDO_CLIENT
   // CANopenComponent's SDO calls for this node. A context of nullptr means `this`, so cancel_sdo() drops them.
   template<typename T> bool read_sdo(uint16_t index, uint8_t sub, SDOCallback callback, void *context = nullptr) {
