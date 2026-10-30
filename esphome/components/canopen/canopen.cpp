@@ -129,7 +129,10 @@ void CANopenComponent::setup() {
                          {2, ODA_SDO_RW, &this->sdo_cli_cob_rx_, 4},
                          {3, ODA_SDO_RW, &this->sdo_cli_node_, 1}});
 #endif
-  od.finalize();
+  if (!od.finalize()) {
+    this->mark_failed();
+    return;
+  }
 
   auto &cfg = this->config_;
   cfg.CNT_NMT = 1;
@@ -163,15 +166,15 @@ void CANopenComponent::setup() {
     return;
   }
   uint32_t err_info = 0;
-  err = CO_CANopenInit(this->co_, nullptr, nullptr, od.od(), nullptr, CO_NMT_STARTUP_TO_OPERATIONAL,
-                       500 /* first HB, ms */, 1000, 0, false, this->node_id_, &err_info);
+  uint16_t nmt_control = this->start_operational_ ? CO_NMT_STARTUP_TO_OPERATIONAL : 0;
+  err = CO_CANopenInit(this->co_, nullptr, nullptr, od.od(), nullptr, nmt_control, 500 /* first HB, ms */, 1000, 0,
+                       false, this->node_id_, &err_info);
   if (err != CO_ERROR_NO) {
     ESP_LOGE(TAG, "CO_CANopenInit failed: %d (OD 0x%04" PRIx32 ")", err, err_info);
     this->mark_failed();
     return;
   }
 
-  CO_NMT_initCallbackChanged(this->co_->NMT, on_nmt_changed);
   for (uint8_t i = 0; i < n_cons; i++) {
     CO_HBconsumer_t *hb = this->co_->HBcons;
     CO_HBconsumer_initCallbackHeartbeatStarted(hb, i, this, on_hb_started);
@@ -192,6 +195,8 @@ void CANopenComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "CANopen (CANopenNode):");
   ESP_LOGCONFIG(TAG, "  Node ID: 0x%02x", this->node_id_);
   ESP_LOGCONFIG(TAG, "  Heartbeat interval: %u ms", this->hb_producer_ms_);
+  ESP_LOGCONFIG(TAG, "  NMT startup: %s",
+                this->start_operational_ ? LOG_STR_LITERAL("operational") : LOG_STR_LITERAL("pre-operational"));
   ESP_LOGCONFIG(
       TAG, "  Identity: vendor 0x%08" PRIx32 ", product 0x%08" PRIx32 ", revision 0x%08" PRIx32 ", serial 0x%08" PRIx32,
       this->identity_[0], this->identity_[1], this->identity_[2], this->identity_[3]);
@@ -279,9 +284,38 @@ void CANopenComponent::process_() {
   } else if (reset == CO_RESET_COMM) {
     ESP_LOGW(TAG, "NMT reset communication (not implemented)");
   }
+  // CANopenNode's state change callback has no context pointer, so the state is compared here
+  NMTState state = to_nmt_state(CO_NMT_getInternalState(this->co_->NMT));
+  if (state != this->nmt_state_) {
+    this->nmt_state_ = state;
+    ESP_LOGI(TAG, "NMT state: %s", nmt_state_to_string(state));
+    this->nmt_state_callback_.call(state);
+  }
 #ifdef USE_CANOPEN_SDO_CLIENT
   this->process_sdo_(dt);
 #endif
+}
+
+bool CANopenComponent::set_nmt_state(NMTState state) {
+  if (this->co_ == nullptr || this->is_failed())
+    return false;
+  CO_NMT_command_t command;
+  switch (state) {
+    case NMTState::NMT_STATE_OPERATIONAL:
+      command = CO_NMT_ENTER_OPERATIONAL;
+      break;
+    case NMTState::NMT_STATE_PRE_OPERATIONAL:
+      command = CO_NMT_ENTER_PRE_OPERATIONAL;
+      break;
+    case NMTState::NMT_STATE_STOPPED:
+      command = CO_NMT_ENTER_STOPPED;
+      break;
+    default:
+      return false;
+  }
+  // applied by the next CO_process()
+  CO_NMT_sendInternalCommand(this->co_->NMT, command);
+  return true;
 }
 
 #ifdef USE_CANOPEN_NMT_MASTER
@@ -323,10 +357,6 @@ void CANopenComponent::on_hb_timeout(uint8_t node_id, uint8_t idx, void *object)
 void CANopenComponent::on_hb_remote_reset(uint8_t node_id, uint8_t idx, void *object) {
   static_cast<CANopenComponent *>(object)->node_event_(node_id, NodeEvent::NODE_EVENT_RESET,
                                                        NMTState::NMT_STATE_BOOTUP);
-}
-
-void CANopenComponent::on_nmt_changed(CO_NMT_internalState_t state) {
-  ESP_LOGI(TAG, "NMT state: %s", nmt_state_to_string(to_nmt_state(state)));
 }
 
 }  // namespace esphome::canopen

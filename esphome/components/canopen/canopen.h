@@ -27,9 +27,29 @@ class CANopenComponent : public Component {
     this->identity_ = {vendor_id, product_code, revision_number, serial_number};
   }
   void set_device_name(const char *name) { this->device_name_ = name; }
+  // NMT state after boot: OPERATIONAL (default) or PRE_OPERATIONAL (until an NMT master, or set_nmt_state(), starts
+  // the node)
+  void set_start_operational(bool operational) { this->start_operational_ = operational; }
   void set_hardware_version(const char *version) { this->hardware_version_ = version; }
   void set_software_version(const char *version) { this->software_version_ = version; }
   void set_response_timeout(uint16_t ms) { this->response_timeout_ms_ = ms; }
+
+  // Object dictionary for other components: entries and handlers (OdObject) are added before setup() only, since
+  // CANopenNode can't add entries after its init. The storage must outlive the component.
+  ObjectDictionary &get_od() { return this->od_; }
+  // Writes a value to our own OD through its handler, as an SDO download does (e.g. for commands received in other
+  // frames). Synchronous; needs write access.
+  OdResult write_od(uint16_t index, uint8_t sub, const void *data, size_t len) {
+    return this->od_.write(index, sub, data, len);
+  }
+
+  // Our own NMT state (UNKNOWN before setup) and its changes, by an NMT master or set_nmt_state()
+  NMTState get_nmt_state() const { return this->nmt_state_; }
+  template<typename F> void add_on_nmt_state_callback(F &&callback) {
+    this->nmt_state_callback_.add(std::forward<F>(callback));
+  }
+  // Moves our own node to OPERATIONAL, PRE_OPERATIONAL or STOPPED (no NMT master needed)
+  bool set_nmt_state(NMTState state);
 
   // Heartbeat monitoring of another node (CANopenNode heartbeat consumer, OD 0x1016). Before setup() only (called
   // from codegen). Registering a node again keeps the shortest timeout.
@@ -130,7 +150,6 @@ class CANopenComponent : public Component {
   static void on_hb_nmt_changed(uint8_t node_id, uint8_t idx, CO_NMT_internalState_t state, void *object);
   static void on_hb_timeout(uint8_t node_id, uint8_t idx, void *object);
   static void on_hb_remote_reset(uint8_t node_id, uint8_t idx, void *object);
-  static void on_nmt_changed(CO_NMT_internalState_t state);
 
   canbus::Canbus *canbus_{nullptr};
   uint8_t node_id_;
@@ -156,6 +175,9 @@ class CANopenComponent : public Component {
   std::vector<uint32_t> hb_cons_;  // 0x1016:1.., (node_id << 16) | timeout_ms
 
   uint32_t last_us_{0};
+  bool start_operational_{true};
+  NMTState nmt_state_{NMTState::NMT_STATE_UNKNOWN};
+  LazyCallbackManager<void(NMTState)> nmt_state_callback_;
   uint16_t response_timeout_ms_{500};
 #ifdef USE_CANOPEN_SDO_CLIENT
   // OD 0x1280 (SDO client parameter), set up per request

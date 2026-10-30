@@ -26,7 +26,9 @@ def test_codegen(
     assert "canopen_node->set_heartbeat_interval(2000);" in main_cpp
     assert "canopen_node->monitor_node(1, 3000);" in main_cpp
     assert "canopen_node->monitor_node(2, 500);" in main_cpp
+    assert "canopen_node->set_start_operational(false);" in main_cpp
     for callback in (
+        "add_on_nmt_state_callback",
         "add_on_node_event_callback",
         "add_on_heartbeat_callback",
         "add_on_emcy_callback",
@@ -49,6 +51,7 @@ def test_defaults() -> None:
     config = CONFIG_SCHEMA(_config())
     assert config["heartbeat_interval"].total_milliseconds == 5000
     assert config["heartbeat_clients"] == []
+    assert config["nmt_startup"] == "operational"
     assert config["identity"] == {
         "vendor_id": 0,
         "product_code": 0,
