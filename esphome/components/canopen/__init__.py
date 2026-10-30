@@ -16,9 +16,11 @@ from esphome.const import (
     CONF_TIMEOUT,
     CONF_VALUE,
 )
-from esphome.core import CORE
+from esphome.core import CORE, ID
+from esphome.cpp_generator import MockObj, TemplateArgsType
 import esphome.final_validate as fv
 from esphome.helpers import write_file_if_changed
+from esphome.types import ConfigType
 
 CODEOWNERS = ["@mrk-its"]
 DEPENDENCIES = ["canbus"]
@@ -63,7 +65,6 @@ Emergency = ns.struct("Emergency")
 SDOResult = ns.enum("SDOResult", is_class=True)
 NMTCommand = ns.enum("NMTCommand", is_class=True)
 SDOWriteAction = ns.class_("SDOWriteAction", automation.Action)
-NMTAction = ns.class_("NMTAction", automation.Action)
 
 NMT_COMMANDS = {
     "start": NMTCommand.NMT_COMMAND_START,
@@ -395,11 +396,23 @@ NMT_SCHEMA = cv.Schema(
 )
 
 
-@automation.register_action("canopen.nmt", NMTAction, NMT_SCHEMA, synchronous=True)
-async def nmt_to_code(config, action_id, template_arg, args):
+_nmt_builder = automation.apply_action_builder(
+    "canopen.nmt",
+    NMT_SCHEMA,
+    automation.ApplyCall(
+        "send_nmt({}, {})", ((CONF_NODE_ID, cg.uint8), (CONF_COMMAND, NMTCommand))
+    ),
+)
+
+
+@automation.register_action(
+    "canopen.nmt", automation.ApplyAction, NMT_SCHEMA, synchronous=True
+)
+async def nmt_to_code(
+    config: ConfigType,
+    action_id: ID,
+    template_arg: cg.TemplateArguments,
+    args: TemplateArgsType,
+) -> MockObj:
     enable_nmt_master()
-    var = cg.new_Pvariable(action_id, template_arg)
-    await cg.register_parented(var, config[CONF_ID])
-    cg.add(var.set_node_id(await cg.templatable(config[CONF_NODE_ID], args, cg.uint8)))
-    cg.add(var.set_command(config[CONF_COMMAND]))
-    return var
+    return await _nmt_builder(config, action_id, template_arg, args)

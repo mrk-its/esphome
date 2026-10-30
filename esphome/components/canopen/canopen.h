@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <initializer_list>
+#include <memory>
 #include <vector>
 
 #include "esphome/core/automation.h"
@@ -83,10 +85,10 @@ class CANopenComponent : public Component {
   // objects need OD_TPDO / OD_RPDO; RPDO data reaches their handler (ObjectDictionary::set_object()). Event-driven
   // transmission types (254, 255); PDOs only run in OPERATIONAL. A PDO configured without mappings starts disabled.
   static constexpr uint8_t MAX_PDO = 32;
-  bool configure_tpdo(uint8_t n, uint32_t cob_id, const std::vector<PdoMapping> &mappings, uint16_t event_timer_ms = 0,
-                      uint16_t inhibit_time_100us = 0, uint8_t transmission_type = 254);
-  bool configure_rpdo(uint8_t n, uint32_t cob_id, const std::vector<PdoMapping> &mappings, uint16_t event_timer_ms = 0,
-                      uint8_t transmission_type = 254);
+  bool configure_tpdo(uint8_t n, uint32_t cob_id, std::initializer_list<PdoMapping> mappings,
+                      uint16_t event_timer_ms = 0, uint16_t inhibit_time_100us = 0, uint8_t transmission_type = 254);
+  bool configure_rpdo(uint8_t n, uint32_t cob_id, std::initializer_list<PdoMapping> mappings,
+                      uint16_t event_timer_ms = 0, uint8_t transmission_type = 254);
   // sends TPDO n at the next processing
   void request_tpdo(uint8_t n);
   // sends the TPDO that maps index:sub (an entry with a handler, sub < 32). CANopenNode has one request flag per
@@ -118,7 +120,8 @@ class CANopenComponent : public Component {
     std::memcpy(&raw, &value, sizeof(T));
     return this->write_sdo(node_id, index, sub, raw, sizeof(T), callback, context);
   }
-  // buffer transfers (strings, domains): segmented, block for more than 32 bytes; reads up to 1024 bytes
+  // buffer transfers (strings, domains): segmented, block for more than 32 bytes; reads up to 1024 bytes.
+  // write_sdo_data() doesn't copy: data must stay valid until the callback.
   bool read_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, SDOCallback callback, void *context);
   bool write_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, const uint8_t *data, size_t len,
                       SDOCallback callback = nullptr, void *context = nullptr);
@@ -150,7 +153,8 @@ class CANopenComponent : public Component {
     SDOKind kind;
     uint8_t size;  // read: expected size (0 = any); write: value size
     uint32_t value;
-    std::vector<uint8_t> data;  // WRITE_DATA
+    const uint8_t *data;  // WRITE_DATA, owned by the caller
+    size_t len;
     SDOCallback callback;
     void *context;
   };
@@ -172,8 +176,8 @@ class CANopenComponent : public Component {
     uint8_t map_count{0};
     std::array<uint32_t, 8> map{};
   };
-  bool configure_pdo_(std::vector<PdoParams> &pdos, const char *kind, uint8_t n, uint32_t cob_id,
-                      const std::vector<PdoMapping> &mappings, uint16_t event_timer_ms, uint16_t inhibit_time_100us,
+  bool configure_pdo_(std::vector<PdoParams> &pdos, const LogString *kind, uint8_t n, uint32_t cob_id,
+                      std::initializer_list<PdoMapping> mappings, uint16_t event_timer_ms, uint16_t inhibit_time_100us,
                       uint8_t transmission_type);
   void add_pdo_map_(uint16_t index, PdoParams &pdo);
 #endif
@@ -223,9 +227,13 @@ class CANopenComponent : public Component {
   size_t sdo_count_{0};
   SDORequest sdo_active_{};
   bool sdo_busy_{false};
-  size_t sdo_offset_{0};         // WRITE/WRITE_DATA: bytes handed to the client fifo
-  std::vector<uint8_t> sdo_rx_;  // READ/READ_DATA: received bytes
-  uint8_t sdo_abort_node_{0};    // node of the last cancelled transfer, see ABORT_GUARD_MS
+  size_t sdo_offset_{0};  // WRITE/WRITE_DATA: bytes handed to the client fifo
+  // READ/READ_DATA: bytes received (also those beyond the buffer, for the size checks), kept in sdo_rx_value_ (READ)
+  // or sdo_rx_buf_ (READ_DATA, SDO_MAX_UPLOAD bytes, allocated on the first buffer read and kept)
+  size_t sdo_rx_len_{0};
+  std::array<uint8_t, 4> sdo_rx_value_{};
+  std::unique_ptr<uint8_t[]> sdo_rx_buf_;
+  uint8_t sdo_abort_node_{0};  // node of the last cancelled transfer, see ABORT_GUARD_MS
   uint32_t sdo_abort_ms_{0};
 #endif
 #ifdef USE_CANOPEN_PDO

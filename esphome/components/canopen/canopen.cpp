@@ -11,33 +11,33 @@ namespace esphome::canopen {
 
 ESPHOME_LOG_TAG(TAG, "canopen");
 
-const char *nmt_state_to_string(NMTState state) {
+const LogString *nmt_state_to_string(NMTState state) {
   switch (state) {
     case NMTState::NMT_STATE_BOOTUP:
-      return "bootup";
+      return LOG_STR("bootup");
     case NMTState::NMT_STATE_STOPPED:
-      return "stopped";
+      return LOG_STR("stopped");
     case NMTState::NMT_STATE_OPERATIONAL:
-      return "operational";
+      return LOG_STR("operational");
     case NMTState::NMT_STATE_PRE_OPERATIONAL:
-      return "pre-operational";
+      return LOG_STR("pre-operational");
     default:
-      return "unknown";
+      return LOG_STR("unknown");
   }
 }
 
-const char *node_event_to_string(NodeEvent event) {
+const LogString *node_event_to_string(NodeEvent event) {
   switch (event) {
     case NodeEvent::NODE_EVENT_ONLINE:
-      return "online";
+      return LOG_STR("online");
     case NodeEvent::NODE_EVENT_OFFLINE:
-      return "offline";
+      return LOG_STR("offline");
     case NodeEvent::NODE_EVENT_NMT_CHANGED:
-      return "NMT changed";
+      return LOG_STR("NMT changed");
     case NodeEvent::NODE_EVENT_RESET:
-      return "reset";
+      return LOG_STR("reset");
     default:
-      return "unknown";
+      return LOG_STR("unknown");
   }
 }
 
@@ -149,7 +149,7 @@ void CANopenComponent::setup() {
   }
 #endif
   if (!od.finalize()) {
-    this->mark_failed();
+    this->mark_failed(LOG_STR("invalid object dictionary"));
     return;
   }
 
@@ -183,8 +183,7 @@ void CANopenComponent::setup() {
   uint32_t heap = 0;
   this->co_ = CO_new(&cfg, &heap);
   if (this->co_ == nullptr) {
-    ESP_LOGE(TAG, "CO_new failed");
-    this->mark_failed();
+    this->mark_failed(LOG_STR("CO_new failed"));
     return;
   }
   CO_ReturnError_t err = CO_CANinit(this->co_, this, 0);
@@ -331,7 +330,7 @@ void CANopenComponent::process_() {
   NMTState state = to_nmt_state(CO_NMT_getInternalState(this->co_->NMT));
   if (state != this->nmt_state_) {
     this->nmt_state_ = state;
-    ESP_LOGI(TAG, "NMT state: %s", nmt_state_to_string(state));
+    ESP_LOGI(TAG, "NMT state: %s", LOG_STR_ARG(nmt_state_to_string(state)));
     this->nmt_state_callback_.call(state);
   }
 #ifdef USE_CANOPEN_SDO_CLIENT
@@ -340,19 +339,19 @@ void CANopenComponent::process_() {
 }
 
 #ifdef USE_CANOPEN_PDO
-bool CANopenComponent::configure_tpdo(uint8_t n, uint32_t cob_id, const std::vector<PdoMapping> &mappings,
+bool CANopenComponent::configure_tpdo(uint8_t n, uint32_t cob_id, std::initializer_list<PdoMapping> mappings,
                                       uint16_t event_timer_ms, uint16_t inhibit_time_100us, uint8_t transmission_type) {
-  return this->configure_pdo_(this->tpdos_, "TPDO", n, cob_id, mappings, event_timer_ms, inhibit_time_100us,
+  return this->configure_pdo_(this->tpdos_, LOG_STR("TPDO"), n, cob_id, mappings, event_timer_ms, inhibit_time_100us,
                               transmission_type);
 }
 
-bool CANopenComponent::configure_rpdo(uint8_t n, uint32_t cob_id, const std::vector<PdoMapping> &mappings,
+bool CANopenComponent::configure_rpdo(uint8_t n, uint32_t cob_id, std::initializer_list<PdoMapping> mappings,
                                       uint16_t event_timer_ms, uint8_t transmission_type) {
-  return this->configure_pdo_(this->rpdos_, "RPDO", n, cob_id, mappings, event_timer_ms, 0, transmission_type);
+  return this->configure_pdo_(this->rpdos_, LOG_STR("RPDO"), n, cob_id, mappings, event_timer_ms, 0, transmission_type);
 }
 
-bool CANopenComponent::configure_pdo_(std::vector<PdoParams> &pdos, const char *kind, uint8_t n, uint32_t cob_id,
-                                      const std::vector<PdoMapping> &mappings, uint16_t event_timer_ms,
+bool CANopenComponent::configure_pdo_(std::vector<PdoParams> &pdos, const LogString *kind, uint8_t n, uint32_t cob_id,
+                                      std::initializer_list<PdoMapping> mappings, uint16_t event_timer_ms,
                                       uint16_t inhibit_time_100us, uint8_t transmission_type) {
   unsigned bits = 0;
   bool aligned = true;
@@ -362,20 +361,21 @@ bool CANopenComponent::configure_pdo_(std::vector<PdoParams> &pdos, const char *
     aligned = aligned && m.bits > 0 && (m.bits % 8) == 0;
   }
   if (this->od_.finalized() || n >= MAX_PDO || mappings.size() > 8 || bits > 64 || !aligned || (cob_id & 0x7FF) == 0) {
-    ESP_LOGE(TAG, "%s %u: invalid configuration (or after setup), ignored", kind, n);
+    ESP_LOGE(TAG, "%s %u: invalid configuration (or after setup), ignored", LOG_STR_ARG(kind), n);
     return false;
   }
   if (pdos.size() <= n)
     pdos.resize(n + 1);
   PdoParams &p = pdos[n];
   // without mappings the PDO would be invalid (CANopenNode sends an EMCY): disabled, for the host to map later
-  p.cob_id = (cob_id & 0x7FF) | (mappings.empty() ? 0x80000000 : 0);
+  p.cob_id = (cob_id & 0x7FF) | (mappings.size() == 0 ? 0x80000000 : 0);
   p.transmission_type = transmission_type;
   p.inhibit_time = inhibit_time_100us;
   p.event_timer = event_timer_ms;
   p.map_count = mappings.size();
-  for (size_t i = 0; i < mappings.size(); i++)
-    p.map[i] = (uint32_t(mappings[i].index) << 16) | (uint32_t(mappings[i].sub) << 8) | mappings[i].bits;
+  size_t i = 0;
+  for (const auto &m : mappings)
+    p.map[i++] = (uint32_t(m.index) << 16) | (uint32_t(m.sub) << 8) | m.bits;
   return true;
 }
 
@@ -441,7 +441,8 @@ void CANopenComponent::node_event_(uint8_t node_id, NodeEvent event, NMTState st
   if (event == NodeEvent::NODE_EVENT_OFFLINE) {
     ESP_LOGW(TAG, "node 0x%02x offline (heartbeat timeout)", node_id);
   } else {
-    ESP_LOGI(TAG, "node 0x%02x %s, NMT state: %s", node_id, node_event_to_string(event), nmt_state_to_string(state));
+    ESP_LOGI(TAG, "node 0x%02x %s, NMT state: %s", node_id, LOG_STR_ARG(node_event_to_string(event)),
+             LOG_STR_ARG(nmt_state_to_string(state)));
   }
   this->node_event_callback_.call(node_id, event, state);
 }
