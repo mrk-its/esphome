@@ -9,10 +9,15 @@
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
+#include "esphome/core/preferences.h"
 #include "esphome/components/canbus/canbus.h"
 
 #include "od.h"
 #include "types.h"
+
+#ifdef USE_CANOPEN_PDO
+#include "storage/CO_storage.h"
+#endif
 
 namespace esphome::canopen {
 
@@ -94,6 +99,10 @@ class CANopenComponent : public Component {
   // sends the TPDO that maps index:sub (an entry with a handler, sub < 32). CANopenNode has one request flag per
   // sub-entry: if several TPDOs map it, only the first one processed is sent.
   bool request_tpdo(uint16_t index, uint8_t sub);
+  // The PDO parameters (communication and mapping records) are the "communication parameters" of 0x1010 / 0x1011
+  // (CiA 301, sub 1 = all, sub 2 = communication): "save" stores them as they are (the host may have changed them
+  // over SDO), and they are loaded at the next boot; "load" restores the configured defaults from the next boot on.
+  // Stored parameters belong to the defaults they were changed from: a firmware with other defaults ignores them.
 #endif
 
 #ifdef USE_CANOPEN_SDO_CLIENT
@@ -180,6 +189,11 @@ class CANopenComponent : public Component {
                       std::initializer_list<PdoMapping> mappings, uint16_t event_timer_ms, uint16_t inhibit_time_100us,
                       uint8_t transmission_type);
   void add_pdo_map_(uint16_t index, PdoParams &pdo);
+  void load_pdos_();
+  bool store_pdos_();
+  bool restore_pdo_defaults_();
+  static ODR_t storage_store(CO_storage_entry_t *entry, CO_CANmodule_t *module);
+  static ODR_t storage_restore(CO_storage_entry_t *entry, CO_CANmodule_t *module);
 #endif
   void node_event_(uint8_t node_id, NodeEvent event, NMTState state);
 
@@ -242,6 +256,16 @@ class CANopenComponent : public Component {
   std::vector<PdoParams> rpdos_;
   uint8_t tpdo_comm_highest_{5};
   uint8_t rpdo_comm_highest_{5};
+  // 0x1010 / 0x1011: sub 1 (all) and 2 (communication); bit 0: saves on command / restores
+  uint8_t storage_highest_sub_{2};
+  std::array<uint32_t, 2> store_caps_{1, 1};
+  std::array<uint32_t, 2> restore_caps_{1, 1};
+  CO_storage_t storage_{};
+  CO_storage_entry_t storage_entry_{};
+  // the stored RPDO and TPDO parameters, and a marker that they are valid (cleared by "load")
+  ESPPreferenceObject rpdo_pref_;
+  ESPPreferenceObject tpdo_pref_;
+  ESPPreferenceObject pdo_valid_pref_;
 #endif
   LazyCallbackManager<void(uint8_t, NodeEvent, NMTState)> node_event_callback_;
   struct FrameListener {

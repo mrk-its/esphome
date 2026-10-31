@@ -34,7 +34,8 @@ extern "C" {
 #endif
 
 /* Stack configuration: only what the component uses. Services whose default is on but whose sources aren't built
- * (LEDs, LSS, storage) or that aren't used yet (TIME, SYNC, PDO) are turned off, the other services default to off.
+ * (LEDs, LSS) or that aren't used yet (TIME, SYNC) are turned off, the other services default to off; PDO and storage
+ * (0x1010 / 0x1011, for the PDO parameters) are enabled by codegen (enable_pdo()).
  * The SDO server is segmented only: block transfer needs a buffer of at least 900 bytes. */
 #ifndef CO_CONFIG_SDO_SRV
 #define CO_CONFIG_SDO_SRV (CO_CONFIG_SDO_SRV_SEGMENTED)
@@ -124,7 +125,8 @@ typedef struct {
   uint32_t errOld;
 } CO_CANmodule_t;
 
-/* Data storage object for one entry (storage is not used, kept for completeness) */
+/* Data storage object for one entry (CO_storage, 0x1010 / 0x1011): the hub's callbacks store the PDO parameters in
+ * ESPHome preferences, so only the CO_driver.h fields CO_storage.c uses are needed */
 typedef struct {
   void *addr;
   size_t len;
