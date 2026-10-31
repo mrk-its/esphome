@@ -298,25 +298,43 @@ void CANopenComponent::check_frame_listener_(uint32_t can_id, uint32_t mask) {
 }
 
 bool CANopenComponent::send_frame(uint32_t can_id, const uint8_t *data, uint8_t len) {
-  if (this->canbus_ == nullptr || len > 8)
+  if (len > 8)
     return false;
-  return this->canbus_->send_data(can_id & 0x7FF, false, false, data, len) == canbus::ERROR_OK;
+  return this->transmit(can_id & 0x7FF, data, len);
+}
+
+bool CANopenComponent::transmit(uint16_t ident, const uint8_t *data, uint8_t len) {
+  if (this->canbus_ == nullptr)
+    return false;
+  // the (data, len) overload is in ESPHome dev since after 2026.9 (not in 2026.9.x releases)
+  if (this->canbus_->send_data(ident & 0x7FF, false, ident & 0x800, data, len) != canbus::ERROR_OK)
+    return false;
+  for (CANopenComponent *node = this->next_local_; node != nullptr && node != this; node = node->next_local_)
+    node->receive_(ident, data, len);
+  return true;
 }
 
 void CANopenComponent::on_frame_(uint32_t can_id, bool extended_id, bool rtr, const std::vector<uint8_t> &data) {
-  if (extended_id || this->co_ == nullptr || this->is_failed())
+  if (extended_id)
+    return;
+  this->receive_((can_id & 0x7FF) | (rtr ? 0x800 : 0), data.data(), data.size() > 8 ? 8 : data.size());
+  this->process_();
+}
+
+void CANopenComponent::receive_(uint16_t ident, const uint8_t *data, uint8_t len) {
+  if (this->co_ == nullptr || this->is_failed())
     return;
   CO_CANmodule_t *mod = this->co_->CANmodule;
   CO_CANrxMsg_t msg{};
-  msg.ident = (can_id & 0x7FF) | (rtr ? 0x800 : 0);
-  msg.DLC = data.size() > 8 ? 8 : data.size();
-  memcpy(msg.data, data.data(), msg.DLC);
+  msg.ident = ident;
+  msg.DLC = len;
+  memcpy(msg.data, data, len);
   for (uint16_t i = 0; i < mod->rxSize; i++) {
     CO_CANrx_t *rx = &mod->rxArray[i];
     if (rx->CANrx_callback != nullptr && ((msg.ident ^ rx->ident) & rx->mask) == 0)
       rx->CANrx_callback(rx->object, &msg);
   }
-  if (!rtr) {
+  if ((ident & 0x800) == 0) {
     for (const auto &l : this->frame_listeners_) {
       if (((msg.ident ^ l.can_id) & l.mask) == 0)
         l.callback(l.context, msg.ident, msg.data, msg.DLC);
@@ -331,7 +349,6 @@ void CANopenComponent::on_frame_(uint32_t can_id, bool extended_id, bool rtr, co
       this->emcy_callback_.call(node, emcy);
     }
   }
-  this->process_();
 }
 
 void CANopenComponent::loop() { this->process_(); }

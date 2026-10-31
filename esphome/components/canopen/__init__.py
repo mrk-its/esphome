@@ -76,6 +76,8 @@ NMT_COMMANDS = {
 }
 
 KEY_CANOPEN = "canopen"
+# canbus id -> the canopen nodes on it, in config order (to_code links them, see set_next_local())
+KEY_LOCAL_NODES = "canopen_local_nodes"
 
 
 def _enable_once(key: str) -> bool:
@@ -284,6 +286,24 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
+def _final_validate(config):
+    # nodes on the same canbus receive each other's frames: their ids must differ, as on any CANopen bus
+    for other in fv.full_config.get().get(DOMAIN, []):
+        if (
+            other[CONF_ID] != config[CONF_ID]
+            and other[CONF_CANBUS_ID] == config[CONF_CANBUS_ID]
+            and other[CONF_NODE_ID] == config[CONF_NODE_ID]
+        ):
+            raise cv.Invalid(
+                f"node_id {config[CONF_NODE_ID]} is also used by canopen {other[CONF_ID]} on the same canbus",
+                path=[CONF_NODE_ID],
+            )
+    return config
+
+
+FINAL_VALIDATE_SCHEMA = _final_validate
+
+
 def add_canopennode_library(path: str | None = None) -> None:
     """Add the CANopenNode library and its target header (also used by the C++ unit tests)."""
     if path is not None:
@@ -323,6 +343,14 @@ async def to_code(config):
 
     canbus = await cg.get_variable(config[CONF_CANBUS_ID])
     cg.add(var.set_canbus(canbus))
+    # other nodes on this canbus: a ring in config order (each call closes it again)
+    local = CORE.data.setdefault(KEY_LOCAL_NODES, {}).setdefault(
+        str(config[CONF_CANBUS_ID]), []
+    )
+    if local:
+        cg.add(local[-1].set_next_local(var))
+        cg.add(var.set_next_local(local[0]))
+    local.append(var)
     cg.add(var.set_heartbeat_interval(config[CONF_HEARTBEAT_INTERVAL]))
     cg.add(var.set_response_timeout(config[CONF_RESPONSE_TIMEOUT]))
     if config[CONF_NMT_STARTUP] != "operational":

@@ -165,3 +165,33 @@ def test_register_node_own_id(
     CORE.config_path = component_config_path("profile_own_id.yaml")
     assert read_config({}) is None
     assert "node_id 16 is the own id of canopen canopen_node" in capsys.readouterr().out
+
+
+def test_local_nodes(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    """Nodes on the same canbus are linked into a ring (each receives the others' frames), per canbus."""
+    main_cpp = generate_main(component_config_path("local.yaml"))
+
+    links = [
+        line.strip() for line in main_cpp.splitlines() if "set_next_local(" in line
+    ]
+    # in order; the last call per node wins: a -> b -> c -> a
+    assert links == [
+        "node_a->set_next_local(node_b);",
+        "node_b->set_next_local(node_a);",
+        "node_b->set_next_local(node_c);",
+        "node_c->set_next_local(node_a);",
+    ]
+    assert "node_d->set_next_local(" not in main_cpp
+
+
+def test_local_nodes_same_id(
+    component_config_path: Callable[[str], Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two nodes on one canbus can't share a node id."""
+    CORE.config_path = component_config_path("local_same_id.yaml")
+    assert read_config({}) is None
+    assert "node_id 16 is also used by canopen" in capsys.readouterr().out
