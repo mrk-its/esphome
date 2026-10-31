@@ -1,5 +1,6 @@
 // CANopenNode driver functions (301/CO_driver.h) on top of ESPHome canbus. CANptr is the CANopenComponent.
-// Everything runs on the main loop: frames are received by CANopenComponent::on_frame_().
+// Everything runs on the main loop: frames are received by CANopenComponent::on_frame_() (the canbus callback),
+// handed to CANopenNode's receive buffers and the frame listeners by receive_(), and sent by transmit().
 #include "canopen.h"
 
 #include <cstring>
@@ -8,6 +9,47 @@ namespace esphome::canopen {
 
 static bool send_frame(CO_CANmodule_t *mod, CO_CANtx_t *buf) {
   return static_cast<CANopenComponent *>(mod->CANptr)->transmit(buf->ident, buf->data, buf->DLC);
+}
+
+void CANopenComponent::set_canbus(canbus::Canbus *canbus) {
+  this->canbus_ = canbus;
+  canbus->add_callback([this](uint32_t can_id, bool extended_id, bool rtr, const std::vector<uint8_t> &data) {
+    this->on_frame_(can_id, extended_id, rtr, data);
+  });
+}
+
+void CANopenComponent::on_frame_(uint32_t can_id, bool extended_id, bool rtr, const std::vector<uint8_t> &data) {
+  if (extended_id)
+    return;
+  this->receive_((can_id & 0x7FF) | (rtr ? 0x800 : 0), data.data(), data.size() > 8 ? 8 : data.size());
+  this->process_();
+}
+
+void CANopenComponent::receive_(uint16_t ident, const uint8_t *data, uint8_t len) {
+  if (this->co_ == nullptr || this->is_failed())
+    return;
+  CO_CANmodule_t *mod = this->co_->CANmodule;
+  CO_CANrxMsg_t msg{};
+  msg.ident = ident;
+  msg.DLC = len;
+  memcpy(msg.data, data, len);
+  for (uint16_t i = 0; i < mod->rxSize; i++) {
+    CO_CANrx_t *rx = &mod->rxArray[i];
+    if (rx->CANrx_callback != nullptr && ((msg.ident ^ rx->ident) & rx->mask) == 0)
+      rx->CANrx_callback(rx->object, &msg);
+  }
+  this->dispatch_frame_(msg);
+}
+
+bool CANopenComponent::transmit(uint16_t ident, const uint8_t *data, uint8_t len) {
+  if (this->canbus_ == nullptr)
+    return false;
+  // the (data, len) overload is in ESPHome dev since after 2026.9 (not in 2026.9.x releases)
+  if (this->canbus_->send_data(ident & 0x7FF, false, ident & 0x800, data, len) != canbus::ERROR_OK)
+    return false;
+  for (CANopenComponent *node = this->next_local_; node != nullptr && node != this; node = node->next_local_)
+    node->receive_(ident, data, len);
+  return true;
 }
 
 }  // namespace esphome::canopen
