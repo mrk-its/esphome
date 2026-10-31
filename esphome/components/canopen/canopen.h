@@ -37,6 +37,9 @@ class CANopenComponent : public Component {
   explicit CANopenComponent(uint8_t node_id) : node_id_(node_id) {}
 
   void set_canbus(canbus::Canbus *canbus);
+  // Other canopen nodes on the same canbus, as a ring (codegen): a frame one of them sends is also received by the
+  // others, since a CAN controller doesn't receive its own frames. nullptr = no other local node.
+  void set_next_local(CANopenComponent *next) { this->next_local_ = next; }
   void set_heartbeat_interval(uint32_t ms) { this->hb_producer_ms_ = ms; }
   // Identity (0x1018) and device information (0x1008 device name, 0x1009 hardware version, 0x100A software
   // version). Before setup() only; the strings must outlive the component. Defaults: identity 0, the node's name,
@@ -80,7 +83,8 @@ class CANopenComponent : public Component {
   NMTState get_node_state(uint8_t node_id);
   bool is_node_online(uint8_t node_id);
 
-  // every heartbeat / EMCY frame on the bus, from any node (our own frames aren't received)
+  // every heartbeat / EMCY frame on the bus, from any node (our own frames aren't received; those of other local
+  // nodes are)
   template<typename F> void add_on_heartbeat_callback(F &&callback) {
     this->heartbeat_callback_.add(std::forward<F>(callback));
   }
@@ -158,11 +162,15 @@ class CANopenComponent : public Component {
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::PROCESSOR; }
 
-  // used by the CANopenNode driver (driver_can.cpp)
-  canbus::Canbus *get_canbus() { return this->canbus_; }
+  // Used by the CANopenNode driver (driver_can.cpp) and send_frame(): sends a standard-ID frame (ident bit 11 =
+  // RTR) on the canbus and, once sent, delivers it to the other local nodes. They only receive it here (CANopenNode
+  // buffers, frame listeners, callbacks) and process it in their next loop(), so no node's processing runs inside
+  // another's.
+  bool transmit(uint16_t ident, const uint8_t *data, uint8_t len);
 
  protected:
   void on_frame_(uint32_t can_id, bool extended_id, bool rtr, const std::vector<uint8_t> &data);
+  void receive_(uint16_t ident, const uint8_t *data, uint8_t len);
   void process_();
 #ifdef USE_CANOPEN_SDO_CLIENT
   enum class SDOKind : uint8_t { SDO_KIND_READ, SDO_KIND_WRITE, SDO_KIND_READ_DATA, SDO_KIND_WRITE_DATA };
@@ -214,6 +222,7 @@ class CANopenComponent : public Component {
   static void on_hb_remote_reset(uint8_t node_id, uint8_t idx, void *object);
 
   canbus::Canbus *canbus_{nullptr};
+  CANopenComponent *next_local_{nullptr};
   uint8_t node_id_;
   CO_t *co_{nullptr};
   CO_config_t config_{};  // must outlive co_

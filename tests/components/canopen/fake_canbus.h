@@ -15,6 +15,8 @@ class FakeCanbus : public canbus::Canbus {
     std::vector<uint8_t> data;
   };
   std::vector<Frame> sent;
+  // the platform refuses frames (TX buffers full)
+  bool busy{false};
 
   size_t count(uint32_t can_id) const {
     size_t n = 0;
@@ -33,6 +35,8 @@ class FakeCanbus : public canbus::Canbus {
  protected:
   bool setup_internal() override { return true; }
   canbus::Error send_message(canbus::CanFrame *frame) override {
+    if (this->busy)
+      return canbus::ERROR_ALLTXBUSY;
     this->sent.push_back({frame->can_id, {frame->data, frame->data + frame->can_data_length_code}});
     return canbus::ERROR_OK;
   }
@@ -41,7 +45,7 @@ class FakeCanbus : public canbus::Canbus {
 
 class TestHub : public CANopenComponent {
  public:
-  TestHub() : CANopenComponent(0x10) {}
+  explicit TestHub(uint8_t node_id = 0x10) : CANopenComponent(node_id) {}
   // a received frame, as the canbus callback delivers it (processed right away)
   void frame(uint32_t can_id, const std::vector<uint8_t> &data) { this->on_frame_(can_id, false, false, data); }
 };
