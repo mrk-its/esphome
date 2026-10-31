@@ -128,6 +128,8 @@ def enable_pdo() -> None:
     # RPDO | TPDO | RPDO timers | TPDO timers | OD IO access (RPDO data reaches the handlers) | OD dynamic (records
     # changed over SDO); no SYNC
     cg.add_build_flag("-DCO_CONFIG_PDO=0x402F")
+    # 0x1010 / 0x1011 store / restore of the PDO parameters (CO_storage, our callbacks on preferences)
+    cg.add_build_flag("-DCO_CONFIG_STORAGE=0x01")
 
 
 def enable_nmt_master() -> None:
