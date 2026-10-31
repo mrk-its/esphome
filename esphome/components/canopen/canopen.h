@@ -21,6 +21,17 @@
 
 namespace esphome::canopen {
 
+// Other components configure the node in two phases:
+// - Build time (Python codegen): the hub parts they use, enable_sdo_client(), enable_nmt_master(), enable_pdo(),
+//   enable_sdo_block(); these set defines and CANopenNode build flags, so they can't be switched on at runtime.
+// - Before the hub's setup(), which builds the object dictionary and initialises CANopenNode: OD entries and
+//   handlers (get_od()), configure_tpdo() / configure_rpdo(), monitor_node(), identity and device information. Two
+//   places run early enough: setters called from codegen (they run in main(), before App.setup()), or the setup()
+//   of a component whose setup priority is above the hub's (setup_priority::PROCESSOR), e.g. PROCESSOR + 1. Calls
+//   made later are logged as errors and ignored.
+// The rest is runtime API, e.g. from loop() or automations: add_frame_listener() and the callbacks (any time),
+// send_frame(), SDO client and NMT master requests; write_od() and request_tpdo() need the OD, so they fail or do
+// nothing before the hub's setup().
 class CANopenComponent : public Component {
  public:
   explicit CANopenComponent(uint8_t node_id) : node_id_(node_id) {}
@@ -41,8 +52,8 @@ class CANopenComponent : public Component {
   void set_software_version(const char *version) { this->software_version_ = version; }
   void set_response_timeout(uint16_t ms) { this->response_timeout_ms_ = ms; }
 
-  // Object dictionary for other components: entries and handlers (OdObject) are added before setup() only, since
-  // CANopenNode can't add entries after its init. The storage must outlive the component.
+  // Object dictionary for other components: entries and handlers (OdObject) are added before setup() only (see
+  // above), since CANopenNode can't add entries after its init. The storage must outlive the component.
   ObjectDictionary &get_od() { return this->od_; }
   // Writes a value to our own OD through its handler, as an SDO download does (e.g. for commands received in other
   // frames). Synchronous; needs write access.
