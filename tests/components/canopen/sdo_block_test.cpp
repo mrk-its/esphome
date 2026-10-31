@@ -92,6 +92,9 @@ class BlockClient {
     return blksizes;
   }
 
+  TestHub &hub() { return this->hub_; }
+  FakeCanbus &bus() { return this->bus_; }
+
  protected:
   TestHub &hub_;
   FakeCanbus &bus_;
@@ -148,6 +151,100 @@ TEST(CanopenSdoBlock, WrongCrcAborts) {
   EXPECT_EQ(r[0], 0x80);  // abort
   uint32_t code = r[4] | (r[5] << 8) | (r[6] << 16) | (uint32_t(r[7]) << 24);
   EXPECT_EQ(code, 0x05040004u);  // CRC error
+}
+
+}  // namespace esphome::canopen::testing
+
+namespace esphome::canopen::testing {
+
+// a domain read in chunks with the size indicated at the first read, consumed as it's read (like remote logs)
+struct Source : OdObject {
+  std::vector<uint8_t> data;
+  size_t remaining{0};
+  size_t pos{0};
+  OdResult od_read(OdStream stream, void *buf, size_t count, size_t *done) {
+    if (stream.offset() == 0) {
+      this->remaining = this->data.size() - this->pos;
+      stream.set_size(this->remaining);
+    }
+    size_t n = std::min(count, this->remaining);
+    std::copy(this->data.begin() + this->pos, this->data.begin() + this->pos + n, static_cast<uint8_t *>(buf));
+    this->pos += n;
+    this->remaining -= n;
+    stream.set_offset(stream.offset() + n);
+    *done = n;
+    return this->remaining != 0 ? OdResult::OD_RESULT_PARTIAL : OdResult::OD_RESULT_OK;
+  }
+};
+
+// block upload as python-canopen's BlockUploadStream does it (no CRC, pst 0), blksize 16; returns the data, or
+// stops at the first unexpected frame (abort code in *abort)
+static std::vector<uint8_t> block_upload(BlockClient &client, uint16_t index, uint8_t sub, uint32_t *abort) {
+  std::vector<uint8_t> out;
+  *abort = 0;
+  auto check_abort = [&](const std::vector<uint8_t> &r) {
+    if (r.size() == 8 && r[0] == 0x80) {
+      *abort = r[4] | (r[5] << 8) | (r[6] << 16) | (uint32_t(r[7]) << 24);
+      return true;
+    }
+    return false;
+  };
+  client.send({0xA0, uint8_t(index), uint8_t(index >> 8), sub, 16, 0, 0, 0});
+  auto r = client.reply();
+  if (r.size() != 8 || check_abort(r) || (r[0] & 0xF9) != 0xC0)
+    return out;
+  client.send({0xA3, 0, 0, 0, 0, 0, 0, 0});
+  for (int blocks = 0; blocks < 100; blocks++) {
+    // the server sends a block, one segment per processing call
+    uint8_t seq = 0;
+    bool last = false;
+    for (int i = 0; i < 200 && !last; i++) {
+      client.hub().loop();
+      for (const auto &f : client.bus().sent) {
+        if (f.can_id != SDO_TX)
+          continue;
+        if (check_abort(f.data))
+          return out;
+        seq = f.data[0] & 0x7F;
+        last = (f.data[0] & 0x80) != 0;
+        out.insert(out.end(), f.data.begin() + 1, f.data.end());
+      }
+      client.bus().sent.clear();
+      if (seq == 16)
+        break;
+    }
+    if (last) {
+      client.send({0xA2, seq, 16, 0, 0, 0, 0, 0});
+      r = client.reply();
+      if (r.size() != 8 || check_abort(r) || (r[0] & 0xE3) != 0xC1)
+        return out;
+      out.resize(out.size() - ((r[0] >> 2) & 7));  // bytes without data in the last segment
+      client.send({0xA1, 0, 0, 0, 0, 0, 0, 0});
+      return out;
+    }
+    client.send({0xA2, seq, 16, 0, 0, 0, 0, 0});
+  }
+  return out;
+}
+
+TEST(CanopenSdoBlock, UploadConsumedDomain) {
+  for (size_t size : {100, 500, 1500, 2048}) {
+    FakeCanbus bus;
+    TestHub hub;
+    hub.set_canbus(&bus);
+    Source src;
+    for (size_t i = 0; i < size; i++)
+      src.data.push_back(uint8_t(i * 7 + 3));
+    hub.get_od().add_var(0x3100, OD_READ, nullptr, 0);
+    hub.get_od().set_object(0x3100, &src);
+    hub.setup();
+    hub.loop();
+    BlockClient client(hub, bus);
+    uint32_t abort = 0;
+    auto out = block_upload(client, 0x3100, 0, &abort);
+    EXPECT_EQ(abort, 0u) << "size " << size;
+    EXPECT_EQ(out, src.data) << "size " << size;
+  }
 }
 
 }  // namespace esphome::canopen::testing
