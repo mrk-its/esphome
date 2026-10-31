@@ -93,11 +93,10 @@ def enable_sdo_client() -> None:
     if not _enable_once("sdo_client"):
         return
     cg.add_define("USE_CANOPEN_SDO_CLIENT")
-    # enable | segmented | block | local (requests to our own node id use our OD); the client needs the fifo
-    # (enable | alt read | crc16 ccitt) and crc16
-    cg.add_build_flag("-DCO_CONFIG_SDO_CLI=0x0F")
-    cg.add_build_flag("-DCO_CONFIG_FIFO=0x07")
-    cg.add_build_flag("-DCO_CONFIG_CRC16=0x01")
+    # enable | segmented | local (requests to our own node id use our OD), with the fifo. No block transfer: it's
+    # optional in CiA 301, a server without it aborts the request, and the client doesn't fall back to segmented.
+    cg.add_build_flag("-DCO_CONFIG_SDO_CLI=0x0B")
+    cg.add_build_flag("-DCO_CONFIG_FIFO=0x01")
 
 
 # CANopenNode's minimum server buffer for block transfer (CO_SDOserver.c checks it)
@@ -109,10 +108,21 @@ def enable_sdo_block(block_size: int) -> None:
 
     `block_size` (1..127) caps the segments per block the server announces for downloads (the client sends a
     block back to back, so it must fit the CAN receive path); for uploads the client chooses it. Without block
-    transfer the server is segmented only, with a 32-byte buffer. The first call sets the size.
+    transfer the server is segmented only, with a 32-byte buffer.
+
+    These are CANopenNode build flags, so they apply to every canopen node of the firmware: a node's
+    sdo_block_size (validated to be the same on all of them) wins over `block_size`, otherwise the first call
+    sets it.
     """
     if not _enable_once("sdo_block"):
         return
+    configured = {
+        hub[CONF_SDO_BLOCK_SIZE]
+        for hub in CORE.config.get(DOMAIN, [])
+        if CONF_SDO_BLOCK_SIZE in hub
+    }
+    if configured:
+        block_size = configured.pop()
     cg.add_define("CANOPEN_SDO_BLOCK_SIZE", block_size)
     # segmented | block, the buffer for a whole block, the download block size cap (CO_CONFIG_SDO_SRV_BLKSIZE needs
     # the SDO server block size patch of the pinned CANopenNode), crc16 for the block CRC
@@ -265,7 +275,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_ON_HEARTBEAT): automation.validate_automation({}),
             cv.Optional(CONF_ON_EMCY): automation.validate_automation({}),
             cv.Optional(CONF_RESPONSE_TIMEOUT, "500ms"): UINT16_MS,
-            # SDO server block transfer, see enable_sdo_block(); without it segmented only
+            # SDO server block transfer, see enable_sdo_block(); without it segmented only. Firmware-wide: the
+            # same on every canopen node
             cv.Optional(CONF_SDO_BLOCK_SIZE): cv.int_range(min=1, max=127),
             # pre_operational: until an NMT master (or set_nmt_state()) starts the node
             cv.Optional(CONF_NMT_STARTUP, default="operational"): cv.one_of(
@@ -287,8 +298,19 @@ CONFIG_SCHEMA = cv.All(
 
 
 def _final_validate(config):
-    # nodes on the same canbus receive each other's frames: their ids must differ, as on any CANopen bus
     for other in fv.full_config.get().get(DOMAIN, []):
+        # CANopenNode build flags (enable_sdo_block()): one value for the whole firmware
+        if (
+            CONF_SDO_BLOCK_SIZE in config
+            and CONF_SDO_BLOCK_SIZE in other
+            and other[CONF_SDO_BLOCK_SIZE] != config[CONF_SDO_BLOCK_SIZE]
+        ):
+            raise cv.Invalid(
+                f"sdo_block_size applies to every canopen node of the firmware: {config[CONF_SDO_BLOCK_SIZE]} "
+                f"here, {other[CONF_SDO_BLOCK_SIZE]} on canopen {other[CONF_ID]}",
+                path=[CONF_SDO_BLOCK_SIZE],
+            )
+        # nodes on the same canbus receive each other's frames: their ids must differ, as on any CANopen bus
         if (
             other[CONF_ID] != config[CONF_ID]
             and other[CONF_CANBUS_ID] == config[CONF_CANBUS_ID]

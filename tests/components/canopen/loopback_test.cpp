@@ -89,6 +89,59 @@ TEST_F(LocalPair, SdoReadFromTheOtherNode) {
   EXPECT_EQ(bus.count(0x590), 1u);
 }
 
+// buffer transfers are segmented (block transfer is optional in servers, and CANopenNode's client doesn't fall back
+// when a server rejects it): a 40-byte write and read back
+TEST_F(LocalPair, SdoBufferTransfersAreSegmented) {
+  uint8_t storage[40] = {};
+  a.get_od().add_var(0x2000, OD_READ_WRITE, storage, sizeof(storage));
+  start();
+  uint8_t data[40];
+  for (size_t i = 0; i < sizeof(data); i++)
+    data[i] = i + 1;
+  struct Result {
+    int done{0};
+    SDOReply reply{};
+    std::vector<uint8_t> read;
+  } result;
+  auto on_reply = +[](void *context, const SDOReply &reply) {
+    auto *r = static_cast<Result *>(context);
+    r->done++;
+    r->reply = reply;
+    if (reply.data != nullptr)
+      r->read.assign(reply.data, reply.data + reply.len);
+  };
+  auto run = [&](int until) {
+    for (int i = 0; i < 50 && result.done < until; i++) {
+      b.loop();
+      a.loop();
+    }
+  };
+
+  bus.sent.clear();
+  ASSERT_TRUE(b.write_sdo_data(0x10, 0x2000, 0, data, sizeof(data), on_reply, &result));
+  run(1);
+  ASSERT_EQ(result.done, 1);
+  EXPECT_TRUE(result.reply.ok());
+  EXPECT_EQ(std::vector<uint8_t>(storage, storage + 40), std::vector<uint8_t>(data, data + 40));
+  // initiate download, segmented with the size indicated (block would be 0xC6)
+  const FakeCanbus::Frame *request = bus.find(0x610);
+  ASSERT_NE(request, nullptr);
+  EXPECT_EQ(request->data[0], 0x21);
+  // 40 bytes in 7-byte segments, each acknowledged
+  EXPECT_EQ(bus.count(0x610), 1u + 6u);
+
+  bus.sent.clear();
+  ASSERT_TRUE(b.read_sdo_data(0x10, 0x2000, 0, on_reply, &result));
+  run(2);
+  ASSERT_EQ(result.done, 2);
+  EXPECT_TRUE(result.reply.ok());
+  EXPECT_EQ(result.read, std::vector<uint8_t>(data, data + 40));
+  // initiate upload (block would be 0xA4)
+  request = bus.find(0x610);
+  ASSERT_NE(request, nullptr);
+  EXPECT_EQ(request->data[0], 0x40);
+}
+
 TEST_F(LocalPair, QueuedFrameDeliveredWhenSent) {
   std::vector<uint8_t> seen;
   b.add_on_heartbeat_callback([&seen](uint8_t node_id, NMTState) { seen.push_back(node_id); });

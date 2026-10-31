@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from esphome.components.canopen import CONFIG_SCHEMA, SDO_WRITE_SCHEMA
+from esphome.components.canopen import CONFIG_SCHEMA, SDO_WRITE_SCHEMA, enable_sdo_block
 from esphome.config import read_config
 import esphome.config_validation as cv
 from esphome.core import CORE
@@ -152,7 +152,9 @@ def test_register_node(
         "USE_CANOPEN_NMT_MASTER",
         "USE_CANOPEN_PDO",
     } <= defines
-    assert "-DCO_CONFIG_SDO_CLI=0x0F" in CORE.build_flags
+    # segmented only (block transfer is optional in servers, CANopenNode's client doesn't fall back)
+    assert "-DCO_CONFIG_SDO_CLI=0x0B" in CORE.build_flags
+    assert "-DCO_CONFIG_FIFO=0x01" in CORE.build_flags
     assert "-DCO_CONFIG_NMT=0x03" in CORE.build_flags
     assert "-DCO_CONFIG_PDO=0x402F" in CORE.build_flags
 
@@ -195,3 +197,21 @@ def test_local_nodes_same_id(
     CORE.config_path = component_config_path("local_same_id.yaml")
     assert read_config({}) is None
     assert "node_id 16 is also used by canopen" in capsys.readouterr().out
+
+
+def test_sdo_block_size_differs(
+    component_config_path: Callable[[str], Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """sdo_block_size is a CANopenNode build flag: one value for every node of the firmware."""
+    CORE.config_path = component_config_path("block_size_differs.yaml")
+    assert read_config({}) is None
+    assert "sdo_block_size applies to every canopen node" in capsys.readouterr().out
+
+
+def test_enable_sdo_block_prefers_configured_size() -> None:
+    """A component's default block size doesn't override a node's sdo_block_size, whatever the order."""
+    CORE.config = {"canopen": [{"node_id": 1}, {"node_id": 2, "sdo_block_size": 32}]}
+    enable_sdo_block(16)
+    assert "-DCO_CONFIG_SDO_SRV_BLKSIZE=32" in CORE.build_flags
+    assert "-DCO_CONFIG_SDO_SRV_BLKSIZE=16" not in CORE.build_flags
