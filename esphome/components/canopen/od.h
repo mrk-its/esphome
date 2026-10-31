@@ -53,8 +53,9 @@ class OdStream {
   // bytes already transferred; a handler returning PARTIAL advances it
   size_t offset() const { return this->stream_->dataOffset; }
   void set_offset(size_t offset) { this->stream_->dataOffset = offset; }
-  // total size: the entry's length, or the size the SDO client indicated for a download; 0 = unknown. A read handler
-  // sets it on the first call (offset 0) to indicate the upload size.
+  // total size: the entry's length. For an entry without a fixed size (a domain) it is 0 during a download until the
+  // last chunk, then the total (CANopenNode's end of transfer indication: the size the client indicated isn't passed
+  // on). A read handler sets it on the first call (offset 0) to indicate the upload size.
   size_t size() const { return this->stream_->dataLength; }
   void set_size(size_t size) { this->stream_->dataLength = size; }
   // the entry's storage (nullptr for entries without one)

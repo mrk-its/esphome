@@ -16,14 +16,15 @@ static constexpr uint32_t SDO_TX = 0x590;  // server -> client
 // a domain without storage, collected in chunks by its handler (like a firmware image)
 struct Domain : OdObject {
   std::vector<uint8_t> data;
-  int writes{0};
+  std::vector<size_t> sizes;  // stream.size() at each call
   OdResult od_write(OdStream stream, const void *buf, size_t count, size_t *done) {
-    this->writes++;
+    this->sizes.push_back(stream.size());
     const auto *bytes = static_cast<const uint8_t *>(buf);
     this->data.insert(this->data.end(), bytes, bytes + count);
     stream.set_offset(stream.offset() + count);
     *done = count;
-    return stream.offset() < stream.size() ? OdResult::OD_RESULT_PARTIAL : OdResult::OD_RESULT_OK;
+    // the size is 0 until the last chunk (end of transfer), then the total
+    return stream.size() == 0 ? OdResult::OD_RESULT_PARTIAL : OdResult::OD_RESULT_OK;
   }
 };
 
@@ -107,8 +108,9 @@ TEST(CanopenSdoBlock, Download) {
   ASSERT_FALSE(hub.is_failed());
   hub.loop();
 
-  // 300 bytes: 43 segments, in blocks of at most 16 (the announced size, CANOPEN_SDO_BLOCK_SIZE)
-  std::vector<uint8_t> data(300);
+  // 2000 bytes: 286 segments, in blocks of at most 16 (the announced size, CANOPEN_SDO_BLOCK_SIZE); more than the
+  // server buffer (900), so the handler gets it in several chunks
+  std::vector<uint8_t> data(2000);
   for (size_t i = 0; i < data.size(); i++)
     data[i] = i * 7 + 3;
   BlockClient client(hub, bus);
@@ -117,7 +119,11 @@ TEST(CanopenSdoBlock, Download) {
   for (uint8_t b : blksizes)
     EXPECT_EQ(b, CANOPEN_SDO_BLOCK_SIZE);
   EXPECT_EQ(image.data, data);
-  EXPECT_GE(image.writes, 1);
+  // a domain's size isn't known before the last chunk, which has the total (the client's indicated size isn't passed)
+  ASSERT_GE(image.sizes.size(), 3u);
+  for (size_t i = 0; i + 1 < image.sizes.size(); i++)
+    EXPECT_EQ(image.sizes[i], 0u);
+  EXPECT_EQ(image.sizes.back(), data.size());
 }
 
 TEST(CanopenSdoBlock, WrongCrcAborts) {
