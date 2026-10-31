@@ -3,6 +3,7 @@ canopen:
     canbus_id: can_bus
     node_id: 0x10
     heartbeat_interval: 1s
+    sdo_block_size: 32
     heartbeat_clients:
       - node_id: 0x01
         timeout: 3s

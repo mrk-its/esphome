@@ -38,6 +38,7 @@ CONF_ON_HEARTBEAT = "on_heartbeat"
 CONF_ON_EMCY = "on_emcy"
 CONF_ON_NMT_STATE_CHANGE = "on_nmt_state_change"
 CONF_NMT_STARTUP = "nmt_startup"
+CONF_SDO_BLOCK_SIZE = "sdo_block_size"
 CONF_CANOPENNODE_PATH = "canopennode_path"
 CONF_RESPONSE_TIMEOUT = "response_timeout"
 CONF_SUBINDEX = "subindex"
@@ -94,6 +95,28 @@ def enable_sdo_client() -> None:
     # (enable | alt read | crc16 ccitt) and crc16
     cg.add_build_flag("-DCO_CONFIG_SDO_CLI=0x0F")
     cg.add_build_flag("-DCO_CONFIG_FIFO=0x07")
+    cg.add_build_flag("-DCO_CONFIG_CRC16=0x01")
+
+
+# CANopenNode's minimum server buffer for block transfer (CO_SDOserver.c checks it)
+SDO_BLOCK_BUFFER_SIZE = 900
+
+
+def enable_sdo_block(block_size: int) -> None:
+    """SDO server block transfer (CiA 301), e.g. for firmware or log uploads.
+
+    `block_size` (1..127) caps the segments per block the server announces for downloads (the client sends a
+    block back to back, so it must fit the CAN receive path); for uploads the client chooses it. Without block
+    transfer the server is segmented only, with a 32-byte buffer. The first call sets the size.
+    """
+    if not _enable_once("sdo_block"):
+        return
+    cg.add_define("CANOPEN_SDO_BLOCK_SIZE", block_size)
+    # segmented | block, the buffer for a whole block, the download block size cap (CO_CONFIG_SDO_SRV_BLKSIZE needs
+    # the SDO server block size patch of the pinned CANopenNode), crc16 for the block CRC
+    cg.add_build_flag("-DCO_CONFIG_SDO_SRV=0x06")
+    cg.add_build_flag(f"-DCO_CONFIG_SDO_SRV_BUFFER_SIZE={SDO_BLOCK_BUFFER_SIZE}")
+    cg.add_build_flag(f"-DCO_CONFIG_SDO_SRV_BLKSIZE={block_size}")
     cg.add_build_flag("-DCO_CONFIG_CRC16=0x01")
 
 
@@ -238,6 +261,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_ON_HEARTBEAT): automation.validate_automation({}),
             cv.Optional(CONF_ON_EMCY): automation.validate_automation({}),
             cv.Optional(CONF_RESPONSE_TIMEOUT, "500ms"): UINT16_MS,
+            # SDO server block transfer, see enable_sdo_block(); without it segmented only
+            cv.Optional(CONF_SDO_BLOCK_SIZE): cv.int_range(min=1, max=127),
             # pre_operational: until an NMT master (or set_nmt_state()) starts the node
             cv.Optional(CONF_NMT_STARTUP, default="operational"): cv.one_of(
                 "operational", "pre_operational", lower=True
@@ -300,6 +325,8 @@ async def to_code(config):
     cg.add(var.set_response_timeout(config[CONF_RESPONSE_TIMEOUT]))
     if config[CONF_NMT_STARTUP] != "operational":
         cg.add(var.set_start_operational(False))
+    if CONF_SDO_BLOCK_SIZE in config:
+        enable_sdo_block(config[CONF_SDO_BLOCK_SIZE])
     identity = config[CONF_IDENTITY]
     cg.add(
         var.set_identity(

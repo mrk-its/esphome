@@ -232,6 +232,9 @@ void CANopenComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "CANopen (CANopenNode):");
   ESP_LOGCONFIG(TAG, "  Node ID: 0x%02x", this->node_id_);
   ESP_LOGCONFIG(TAG, "  Heartbeat interval: %u ms", this->hb_producer_ms_);
+#ifdef CANOPEN_SDO_BLOCK_SIZE
+  ESP_LOGCONFIG(TAG, "  SDO server: block transfer, download block size %u", CANOPEN_SDO_BLOCK_SIZE);
+#endif
   ESP_LOGCONFIG(TAG, "  NMT startup: %s",
                 this->start_operational_ ? LOG_STR_LITERAL("operational") : LOG_STR_LITERAL("pre-operational"));
   ESP_LOGCONFIG(

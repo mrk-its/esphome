@@ -3,47 +3,9 @@
 #include <vector>
 
 #include "esphome/components/canopen/canopen.h"
+#include "fake_canbus.h"
 
 namespace esphome::canopen::testing {
-
-// records the frames the hub sends
-class FakeCanbus : public canbus::Canbus {
- public:
-  struct Frame {
-    uint32_t can_id;
-    std::vector<uint8_t> data;
-  };
-  std::vector<Frame> sent;
-
-  size_t count(uint32_t can_id) const {
-    size_t n = 0;
-    for (const auto &f : this->sent)
-      n += f.can_id == can_id;
-    return n;
-  }
-  const Frame *find(uint32_t can_id) const {
-    for (const auto &f : this->sent) {
-      if (f.can_id == can_id)
-        return &f;
-    }
-    return nullptr;
-  }
-
- protected:
-  bool setup_internal() override { return true; }
-  canbus::Error send_message(canbus::CanFrame *frame) override {
-    this->sent.push_back({frame->can_id, {frame->data, frame->data + frame->can_data_length_code}});
-    return canbus::ERROR_OK;
-  }
-  canbus::Error read_message(canbus::CanFrame *frame) override { return canbus::ERROR_NOMSG; }
-};
-
-class PdoHub : public CANopenComponent {
- public:
-  PdoHub() : CANopenComponent(0x10) {}
-  // a received frame, as the canbus callback delivers it (processed right away)
-  void frame(uint32_t can_id, const std::vector<uint8_t> &data) { this->on_frame_(can_id, false, false, data); }
-};
 
 struct Value : OdObject {
   uint32_t value{0};
@@ -56,7 +18,7 @@ struct Value : OdObject {
 
 TEST(CanopenPdo, TpdoAndRpdo) {
   FakeCanbus bus;
-  PdoHub hub;
+  TestHub hub;
   hub.set_canbus(&bus);
   Value state, command;
   state.value = 0x11223344;
@@ -126,7 +88,7 @@ TEST(CanopenPdo, TpdoAndRpdo) {
 
 TEST(CanopenPdo, NotOperational) {
   FakeCanbus bus;
-  PdoHub hub;
+  TestHub hub;
   hub.set_canbus(&bus);
   hub.set_start_operational(false);
   uint32_t value = 1;
@@ -144,7 +106,7 @@ TEST(CanopenPdo, NotOperational) {
 }
 
 TEST(CanopenPdo, InvalidConfiguration) {
-  PdoHub hub;
+  TestHub hub;
   EXPECT_FALSE(hub.configure_tpdo(CANopenComponent::MAX_PDO, 0x190, {}));
   EXPECT_FALSE(hub.configure_tpdo(0, 0x190, {{0x2011, 0, 12}}));                   // not whole bytes
   EXPECT_FALSE(hub.configure_tpdo(0, 0x190, {{0x2011, 0, 32}, {0x2012, 0, 40}}));  // more than 8 bytes
