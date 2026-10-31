@@ -44,6 +44,13 @@ def test_codegen(
     assert "canopen::SDOWriteAction<>" in main_cpp
     assert "set_value([]() -> uint32_t {\n    return 65535;\n});" in main_cpp
     assert "set_size(2);" in main_cpp
+    # SDO block transfer: the CANopenNode configuration and the define for dump_config()
+    assert "-DCO_CONFIG_SDO_SRV=0x06" in CORE.build_flags
+    assert "-DCO_CONFIG_SDO_SRV_BUFFER_SIZE=900" in CORE.build_flags
+    assert "-DCO_CONFIG_SDO_SRV_BLKSIZE=16" in CORE.build_flags
+    assert "-DCO_CONFIG_CRC16=0x01" in CORE.build_flags
+    defines = {d.name: str(d.value) for d in CORE.defines}
+    assert defines["CANOPEN_SDO_BLOCK_SIZE"] == "16"
     # canopen.nmt: no action class, a static function calling the hub
     assert (
         "canopen_node->send_nmt(1, canopen::NMTCommand::NMT_COMMAND_PRE_OPERATIONAL);"
@@ -56,6 +63,7 @@ def test_defaults() -> None:
     assert config["heartbeat_interval"].total_milliseconds == 5000
     assert config["heartbeat_clients"] == []
     assert config["nmt_startup"] == "operational"
+    assert "sdo_block_size" not in config  # segmented only
     assert config["identity"] == {
         "vendor_id": 0,
         "product_code": 0,

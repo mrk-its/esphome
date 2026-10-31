@@ -3,6 +3,7 @@ from esphome.components.canopen import (
     add_canopennode_library,
     enable_nmt_master,
     enable_pdo,
+    enable_sdo_block,
     enable_sdo_client,
 )
 from tests.testing_helpers import ComponentManifestOverride
@@ -15,6 +16,8 @@ def override_manifest(manifest: ComponentManifestOverride) -> None:
         enable_sdo_client()
         enable_nmt_master()
         enable_pdo()
+        # sdo_block_test.cpp: the announced download block size
+        enable_sdo_block(16)
 
     manifest.enable_codegen()
     manifest.to_code = to_code_testing
