@@ -144,7 +144,8 @@ class CANopenComponent : public Component {
     std::memcpy(&raw, &value, sizeof(T));
     return this->write_sdo(node_id, index, sub, raw, sizeof(T), callback, context);
   }
-  // buffer transfers (strings, domains): segmented, block for more than 32 bytes; reads up to 1024 bytes.
+  // buffer transfers (strings, domains): segmented (every server supports it, block transfer is optional);
+  // reads up to 1024 bytes.
   // write_sdo_data() doesn't copy: data must stay valid until the callback.
   bool read_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, SDOCallback callback, void *context);
   bool write_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, const uint8_t *data, size_t len,

@@ -13,8 +13,6 @@ namespace esphome::canopen {
 
 ESPHOME_LOG_TAG(TAG, "canopen.sdo");
 
-// block transfer only pays off for larger buffers
-static constexpr size_t BLOCK_THRESHOLD = 32;
 // after an abort, the next request to the same node waits this long, so the server has processed the abort
 static constexpr uint32_t ABORT_GUARD_MS = 50;
 
@@ -121,7 +119,7 @@ bool CANopenComponent::start_sdo_() {
       return CO_SDOclientUploadInitiate(cli, r.index, r.sub, this->response_timeout_ms_, false) ==
              CO_SDO_RT_ok_communicationEnd;
     case SDOKind::SDO_KIND_READ_DATA:
-      return CO_SDOclientUploadInitiate(cli, r.index, r.sub, this->response_timeout_ms_, true) ==
+      return CO_SDOclientUploadInitiate(cli, r.index, r.sub, this->response_timeout_ms_, false) ==
              CO_SDO_RT_ok_communicationEnd;
     case SDOKind::SDO_KIND_WRITE: {
       uint8_t buf[4] = {(uint8_t) r.value, (uint8_t) (r.value >> 8), (uint8_t) (r.value >> 16),
@@ -133,8 +131,8 @@ bool CANopenComponent::start_sdo_() {
       return this->sdo_offset_ == r.size;
     }
     case SDOKind::SDO_KIND_WRITE_DATA:
-      if (CO_SDOclientDownloadInitiate(cli, r.index, r.sub, r.len, this->response_timeout_ms_,
-                                       r.len > BLOCK_THRESHOLD) != CO_SDO_RT_ok_communicationEnd)
+      if (CO_SDOclientDownloadInitiate(cli, r.index, r.sub, r.len, this->response_timeout_ms_, false) !=
+          CO_SDO_RT_ok_communicationEnd)
         return false;
       this->sdo_offset_ = CO_SDOclientDownloadBufWrite(cli, r.data, r.len);
       return true;
