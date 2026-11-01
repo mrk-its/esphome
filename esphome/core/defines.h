@@ -66,6 +66,20 @@
 #define BQ25186_TEXT_SENSOR_COUNT 1
 #define USE_BUTTON
 #define USE_CAMERA
+#define USE_CANOPEN_NMT_MASTER
+#define USE_CANOPEN_PDO
+#define USE_CANOPEN_SDO_CLIENT
+#define CANOPEN_SDO_BLOCK_SIZE 16
+// canopen: the CANopenNode configuration codegen sets as build flags (enable_*()) for its optional parts
+#define CO_CONFIG_SDO_CLI 0x0B
+#define CO_CONFIG_FIFO 0x01
+#define CO_CONFIG_SDO_SRV 0x06
+#define CO_CONFIG_SDO_SRV_BUFFER_SIZE 900
+#define CO_CONFIG_SDO_SRV_BLKSIZE 16
+#define CO_CONFIG_CRC16 0x01
+#define CO_CONFIG_PDO 0x402F
+#define CO_CONFIG_STORAGE 0x01
+#define CO_CONFIG_NMT 0x03
 #define USE_CLIMATE
 #define USE_CLIMATE_VISUAL_OVERRIDES
 #define USE_CONTROLLER_REGISTRY
