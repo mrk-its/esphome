@@ -23,7 +23,7 @@ bool ObjectDictionary::can_add_(uint16_t index) const {
 void ObjectDictionary::add_var(uint16_t index, OD_attr_t attr, void *data, OD_size_t len) {
   if (!this->can_add_(index))
     return;
-  this->pending_.push_back(PendingEntry{index, 1, ODT_VAR, static_cast<uint16_t>(this->vars_.size())});
+  this->pending_.push_back(PendingEntry{index, 1, ODT_VAR, static_cast<uint16_t>(this->vars_.size()), 0});
   this->vars_.push_back(OD_obj_var_t{data, multi_byte(attr, len), len});
 }
 
@@ -32,7 +32,7 @@ void ObjectDictionary::add_array(uint16_t index, OD_attr_t attr, uint8_t *count,
   if (!this->can_add_(index))
     return;
   this->pending_.push_back(
-      PendingEntry{index, static_cast<uint8_t>(n + 1), ODT_ARR, static_cast<uint16_t>(this->arrays_.size())});
+      PendingEntry{index, static_cast<uint8_t>(n + 1), ODT_ARR, static_cast<uint16_t>(this->arrays_.size()), 0});
   this->arrays_.push_back(OD_obj_array_t{count, data, ODA_SDO_R, multi_byte(attr, elem_len), elem_len, elem_len});
 }
 
@@ -40,7 +40,7 @@ void ObjectDictionary::add_record(uint16_t index, const RecordSub *subs, size_t 
   if (!this->can_add_(index))
     return;
   this->pending_.push_back(
-      PendingEntry{index, static_cast<uint8_t>(count), ODT_REC, static_cast<uint16_t>(this->records_.size())});
+      PendingEntry{index, static_cast<uint8_t>(count), ODT_REC, static_cast<uint16_t>(this->records_.size()), 0});
   for (size_t i = 0; i < count; i++) {
     const RecordSub &s = subs[i];
     this->records_.push_back(OD_obj_record_t{s.data, s.sub, multi_byte(s.attr, s.len), s.len});
@@ -51,7 +51,7 @@ void ObjectDictionary::add_string(uint16_t index, const char *str) {
   if (!this->can_add_(index))
     return;
   OD_size_t len = std::strlen(str);
-  this->pending_.push_back(PendingEntry{index, 1, ODT_VAR, static_cast<uint16_t>(this->vars_.size())});
+  this->pending_.push_back(PendingEntry{index, 1, ODT_VAR, static_cast<uint16_t>(this->vars_.size()), 0});
   // no ODA_MB: a string has no byte order
   this->vars_.push_back(OD_obj_var_t{const_cast<char *>(str), ODA_SDO_R, len > 0 ? len : 1});
 }
@@ -71,6 +71,7 @@ bool ObjectDictionary::finalize() {
   this->vars_.shrink_to_fit();
   this->arrays_.shrink_to_fit();
   this->records_.shrink_to_fit();
+  this->extensions_.shrink_to_fit();
   // OD_find() expects a blank last element
   this->entries_.reserve(pending.size() + 1);
   for (const auto &p : pending) {
@@ -82,7 +83,8 @@ bool ObjectDictionary::finalize() {
     } else {
       obj = &this->records_[p.object];
     }
-    this->entries_.push_back(OD_entry_t{p.index, p.sub_count, p.type, obj, nullptr});
+    OD_extension_t *ext = p.extension ? &this->extensions_[p.extension - 1] : nullptr;
+    this->entries_.push_back(OD_entry_t{p.index, p.sub_count, p.type, obj, ext});
   }
   this->entries_.push_back(OD_entry_t{0, 0, 0, nullptr, nullptr});
   std::vector<PendingEntry>().swap(pending);

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include <type_traits>
 #include <vector>
 
 #include "esphome/core/defines.h"  // before CANopenNode: clang-tidy gets the CO_CONFIG_* values from it
@@ -9,12 +10,17 @@
 #define OD_DEFINITION
 #include "CANopen.h"
 
+#include "od_handler.h"
+
 namespace esphome::canopen {
 
 // Attributes of OD entries (CANopenNode's ODA_* values)
 constexpr uint8_t OD_READ = ODA_SDO_R;
 constexpr uint8_t OD_WRITE = ODA_SDO_W;
 constexpr uint8_t OD_READ_WRITE = ODA_SDO_RW;
+// mappable to a TPDO / RPDO
+constexpr uint8_t OD_TPDO = ODA_TPDO;
+constexpr uint8_t OD_RPDO = ODA_RPDO;
 
 // Object dictionary built at runtime (CO_MULTIPLE_OD). Entries are collected with add_*() and turned into the sorted
 // OD_entry_t list by finalize(). The value storage is owned by the caller and must outlive the OD. All allocation
@@ -48,21 +54,49 @@ class ObjectDictionary {
   OD_entry_t *find(uint16_t index) { return OD_find(&this->od_, index); }
   OD_t *od() { return &this->od_; }
 
+  // --- Handlers (od_handler.h, od_handler.cpp) ---
+  // Calls handler->od_read() / od_write() (an OdObject subclass) for every access to an entry added before.
+  template<typename T> void set_object(uint16_t index, T *handler) {
+    static_assert(std::is_base_of_v<OdObject, T>, "OD handlers derive from canopen::OdObject");
+    this->set_extension_(index, OD_extension_t{handler, &read_trampoline<T>, &write_trampoline<T>, {}});
+  }
+  // Writes a value through the entry's handler, as an SDO download does. Needs write access. After finalize().
+  OdResult write(uint16_t index, uint8_t sub, const void *data, size_t len);
+
  protected:
-  // an entry until finalize(): its object by position in vars_ / arrays_ / records_
+  // an entry until finalize(): its object and extension by position in vars_ / arrays_ / records_ / extensions_
   struct PendingEntry {
     uint16_t index;
     uint8_t sub_count;
     uint8_t type;
     uint16_t object;
+    uint16_t extension;  // position + 1, 0 = none
   };
 
   bool can_add_(uint16_t index) const;
+
+  // --- Handlers (od_handler.cpp) ---
+  void set_extension_(uint16_t index, const OD_extension_t &extension);
+  template<typename T>
+  static ODR_t read_trampoline(OD_stream_t *stream, void *buf, OD_size_t count, OD_size_t *count_read) {
+    size_t done = 0;
+    auto ret = static_cast<T *>(stream->object)->od_read(OdStream(stream), buf, count, &done);
+    *count_read = done;
+    return static_cast<ODR_t>(ret);
+  }
+  template<typename T>
+  static ODR_t write_trampoline(OD_stream_t *stream, const void *buf, OD_size_t count, OD_size_t *count_written) {
+    size_t done = 0;
+    auto ret = static_cast<T *>(stream->object)->od_write(OdStream(stream), buf, count, &done);
+    *count_written = done;
+    return static_cast<ODR_t>(ret);
+  }
 
   std::vector<PendingEntry> pending_;  // released by finalize()
   std::vector<OD_obj_var_t> vars_;
   std::vector<OD_obj_array_t> arrays_;
   std::vector<OD_obj_record_t> records_;  // the subs of all records, each record's in a row
+  std::vector<OD_extension_t> extensions_;
   std::vector<OD_entry_t> entries_;
   OD_t od_{0, nullptr};
   bool finalized_{false};

@@ -46,6 +46,14 @@ void CANopenComponent::setup() {
   od.add_var(0x1014, ODA_SDO_RW, &this->cob_emcy_, sizeof(this->cob_emcy_));
   od.add_var(0x1017, ODA_SDO_RW, &this->hb_producer_ms_, sizeof(this->hb_producer_ms_));
   this->add_device_info_od_();
+  this->add_node_monitor_od_();
+#ifdef USE_CANOPEN_SDO_CLIENT
+  this->add_sdo_client_od_();
+#endif
+#ifdef USE_CANOPEN_PDO
+  this->add_pdo_storage_od_();
+  this->add_pdo_od_();
+#endif
   if (!od.finalize()) {
     this->mark_failed(LOG_STR("invalid object dictionary"));
     return;
@@ -59,6 +67,13 @@ void CANopenComponent::setup() {
   cfg.ENTRY_H1014 = od.find(0x1014);
   cfg.CNT_ARR_1003 = 8;  // EM fifo size, needs >= 1
   this->config_device_info_(cfg);
+  this->config_node_monitor_(cfg);
+#ifdef USE_CANOPEN_SDO_CLIENT
+  this->config_sdo_client_(cfg);
+#endif
+#ifdef USE_CANOPEN_PDO
+  this->config_pdo_(cfg);
+#endif
 
   uint32_t heap = 0;
   this->co_ = CO_new(&cfg, &heap);
@@ -72,6 +87,12 @@ void CANopenComponent::setup() {
     this->mark_failed();
     return;
   }
+#ifdef USE_CANOPEN_PDO
+  if (!this->init_pdo_storage_()) {
+    this->mark_failed();
+    return;
+  }
+#endif
   uint32_t err_info = 0;
   uint16_t nmt_control = this->start_operational_ ? CO_NMT_STARTUP_TO_OPERATIONAL : 0;
   err = CO_CANopenInit(this->co_, nullptr, nullptr, od.od(), nullptr, nmt_control, 500 /* first HB, ms */, 1000, 0,
@@ -81,6 +102,14 @@ void CANopenComponent::setup() {
     this->mark_failed();
     return;
   }
+#ifdef USE_CANOPEN_PDO
+  if (!this->init_pdo_()) {
+    this->mark_failed();
+    return;
+  }
+#endif
+  this->init_node_monitor_();
+  this->init_frame_listeners_();
 
   CO_CANsetNormalMode(this->co_->CANmodule);
   this->last_us_ = micros();
@@ -91,9 +120,16 @@ void CANopenComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "CANopen (CANopenNode):");
   ESP_LOGCONFIG(TAG, "  Node ID: 0x%02x", this->node_id_);
   ESP_LOGCONFIG(TAG, "  Heartbeat interval: %u ms", this->hb_producer_ms_);
+#ifdef CANOPEN_SDO_BLOCK_SIZE
+  ESP_LOGCONFIG(TAG, "  SDO server: block transfer, download block size %u", CANOPEN_SDO_BLOCK_SIZE);
+#endif
   ESP_LOGCONFIG(TAG, "  NMT startup: %s",
                 this->start_operational_ ? LOG_STR_LITERAL("operational") : LOG_STR_LITERAL("pre-operational"));
   this->dump_device_info_config_();
+#ifdef USE_CANOPEN_SDO_CLIENT
+  ESP_LOGCONFIG(TAG, "  SDO client: response timeout %u ms", this->response_timeout_ms_);
+#endif
+  this->dump_node_monitor_config_();
 }
 
 void CANopenComponent::loop() { this->process_(); }
@@ -111,6 +147,9 @@ void CANopenComponent::process_() {
   } else if (reset == CO_RESET_COMM) {
     ESP_LOGW(TAG, "NMT reset communication (not implemented)");
   }
+#ifdef USE_CANOPEN_PDO
+  this->process_pdo_(dt);
+#endif
   // CANopenNode's state change callback has no context pointer, so the state is compared here
   NMTState state = to_nmt_state(CO_NMT_getInternalState(this->co_->NMT));
   if (state != this->nmt_state_) {
@@ -118,6 +157,9 @@ void CANopenComponent::process_() {
     ESP_LOGI(TAG, "NMT state: %s", LOG_STR_ARG(nmt_state_to_string(state)));
     this->nmt_state_callback_.call(state);
   }
+#ifdef USE_CANOPEN_SDO_CLIENT
+  this->process_sdo_(dt);
+#endif
 }
 
 bool CANopenComponent::set_nmt_state(NMTState state) {
