@@ -1,0 +1,20 @@
+canopen:
+  - id: canopen_node
+    canbus_id: can_bus
+    node_id: 0x10
+    heartbeat_interval: 1s
+    identity:
+      vendor_id: 0x12345678
+      product_code: 0x2A
+      revision_number: 0x00010002
+      serial_number: 0x1
+    device_name: canopen test node
+    hardware_version: rev B
+    software_version: "1.0"
+    nmt_startup: pre_operational
+    on_nmt_state_change:
+      - if:
+          condition:
+            lambda: "return state == esphome::canopen::NMTState::NMT_STATE_PRE_OPERATIONAL;"
+          then:
+            - lambda: "id(canopen_node).set_nmt_state(esphome::canopen::NMTState::NMT_STATE_OPERATIONAL);"
