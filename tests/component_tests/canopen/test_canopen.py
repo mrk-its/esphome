@@ -215,3 +215,26 @@ def test_enable_sdo_block_prefers_configured_size() -> None:
     enable_sdo_block(16)
     assert "-DCO_CONFIG_SDO_SRV_BLKSIZE=32" in CORE.build_flags
     assert "-DCO_CONFIG_SDO_SRV_BLKSIZE=16" not in CORE.build_flags
+
+
+def test_ota_only_when_requested(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    """The program download objects and SDO block transfer come with `ota: - platform: canopen` only."""
+    main_cpp = generate_main(component_config_path("no_ota.yaml"))
+    assert "CANopenOTAComponent" not in main_cpp
+    assert "-DCO_CONFIG_CRC16=0x01" not in CORE.build_flags
+    assert "CANOPEN_SDO_BLOCK_SIZE" not in {define.name for define in CORE.defines}
+
+
+def test_ota_codegen(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    main_cpp = generate_main(component_config_path("ota.yaml"))
+    assert "canopen::CANopenOTAComponent()" in main_cpp
+    assert "->set_canopen(canopen_node);" in main_cpp
+    assert "->set_reboot(false);" in main_cpp
+    # block transfer at the default size: the hub's sdo_block_size isn't set
+    assert "-DCO_CONFIG_SDO_SRV_BLKSIZE=16" in CORE.build_flags
