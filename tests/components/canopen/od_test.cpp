@@ -70,6 +70,25 @@ struct CountingObject : OdObject {
   }
 };
 
+TEST(CanopenOD, ValueSize) {
+  uint8_t u8 = 0;
+  uint32_t u32 = 0;
+  CountingObject handler;
+  ObjectDictionary od;
+  od.add_var(0x2000, OD_READ_WRITE, &u8, sizeof(u8));
+  od.add_var(0x2001, OD_READ_WRITE, &u32, sizeof(u32));
+  od.add_var(0x2002, OD_READ_WRITE, &u32, sizeof(u32));
+  od.set_object(0x2002, &handler);
+  EXPECT_EQ(od.value_size(0x2000, 0), 0u);  // before finalize()
+  ASSERT_TRUE(od.finalize());
+  EXPECT_EQ(od.value_size(0x2000, 0), 1u);
+  EXPECT_EQ(od.value_size(0x2001, 0), 4u);
+  EXPECT_EQ(od.value_size(0x2000, 1), 0u);  // no such sub-index
+  EXPECT_EQ(od.value_size(0x2FFF, 0), 0u);  // no such entry
+  EXPECT_EQ(od.value_size(0x2002, 0), 4u);
+  EXPECT_EQ(handler.writes, 0);  // handlers don't run
+}
+
 // a read-only domain without storage, generated in chunks: 100 bytes 0, 1, 2, ...
 struct GeneratedObject : OdObject {
   OdResult od_read(OdStream stream, void *buf, size_t count, size_t *done) {
@@ -139,6 +158,63 @@ TEST(CanopenOD, HandlerPartialRead) {
   // no od_write: the default writes to the storage, which a read-only entry doesn't allow
   uint8_t b = 0;
   EXPECT_EQ(od.write(0x3100, 0, &b, 1), OdResult::OD_RESULT_READ_ONLY);
+}
+
+struct CountingReadObject : OdObject {
+  int reads{0};
+  OdResult od_read(OdStream stream, void *buf, size_t count, size_t *done) {
+    this->reads++;
+    return stream.read_original(buf, count, done);
+  }
+};
+
+TEST(CanopenOD, Read) {
+  uint32_t value = 0x12345678;
+  uint8_t small = 7, write_only = 0;
+  CountingReadObject counting;
+  ObjectDictionary od;
+  od.add_var(0x2000, OD_READ, &value, sizeof(value));
+  od.add_var(0x2001, OD_READ, &small, sizeof(small));
+  od.add_var(0x2002, OD_WRITE, &write_only, sizeof(write_only));
+  od.add_var(0x2003, OD_READ, &value, sizeof(value));
+  od.set_object(0x2003, &counting);
+  size_t len = 99;
+  uint32_t read = 0;
+  EXPECT_EQ(od.read(0x2000, 0, &read, sizeof(read), &len), OdResult::OD_RESULT_DEVICE_STATE);  // before finalize()
+  EXPECT_EQ(len, 0u);
+  ASSERT_TRUE(od.finalize());
+
+  EXPECT_EQ(od.read(0x2000, 0, &read, sizeof(read), &len), OdResult::OD_RESULT_OK);
+  EXPECT_EQ(read, 0x12345678u);
+  EXPECT_EQ(len, 4u);
+  // a larger buffer: len says how much is valid
+  uint8_t buf[8] = {};
+  EXPECT_EQ(od.read(0x2001, 0, buf, sizeof(buf), &len), OdResult::OD_RESULT_OK);
+  EXPECT_EQ(len, 1u);
+  EXPECT_EQ(buf[0], 7);
+  // through the handler
+  EXPECT_EQ(od.read(0x2003, 0, &read, sizeof(read), &len), OdResult::OD_RESULT_OK);
+  EXPECT_EQ(counting.reads, 1);
+
+  EXPECT_EQ(od.read(0x2000, 0, buf, 2, &len), OdResult::OD_RESULT_DATA_LONG);
+  EXPECT_EQ(od.read(0x2000, 0, buf, 0, &len), OdResult::OD_RESULT_DATA_LONG);
+  EXPECT_EQ(od.read(0x2002, 0, buf, sizeof(buf), &len), OdResult::OD_RESULT_WRITE_ONLY);
+  EXPECT_EQ(od.read(0x2FFF, 0, buf, sizeof(buf), &len), OdResult::OD_RESULT_NOT_EXIST);
+  EXPECT_EQ(od.read(0x2000, 1, buf, sizeof(buf), &len), OdResult::OD_RESULT_SUB_NOT_EXIST);
+  EXPECT_EQ(len, 0u);
+
+  // a value in several handler calls
+  GeneratedObject generated;
+  ObjectDictionary od2;
+  od2.add_var(0x3100, OD_READ, nullptr, 0);
+  od2.set_object(0x3100, &generated);
+  ASSERT_TRUE(od2.finalize());
+  uint8_t data[128];
+  EXPECT_EQ(od2.read(0x3100, 0, data, sizeof(data), &len), OdResult::OD_RESULT_OK);
+  EXPECT_EQ(len, 100u);
+  EXPECT_EQ(data[99], 99);
+  EXPECT_EQ(od2.read(0x3100, 0, data, 50, &len), OdResult::OD_RESULT_DATA_LONG);
+  EXPECT_EQ(len, 50u);
 }
 
 TEST(CanopenOD, Errors) {
