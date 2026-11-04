@@ -152,7 +152,8 @@ bool CANopenComponent::start_sdo_() {
 
 void CANopenComponent::process_sdo_(uint32_t dt_us) {
   if (!this->sdo_busy_) {
-    if (this->sdo_count_ == 0)
+    // A cancelled transfer may still have its abort queued in the driver.
+    if (this->sdo_count_ == 0 || this->co_->SDOclient->CANtxBuff->bufferFull)
       return;
     if (this->sdo_queue_[this->sdo_head_].node_id == this->sdo_abort_node_) {
       if (millis() - this->sdo_abort_ms_ < ABORT_GUARD_MS)
@@ -251,6 +252,12 @@ void CANopenComponent::finish_sdo_(SDOResult result, uint32_t abort_code) {
 void CANopenComponent::abort_sdo_() {
   CO_SDOclient_t *cli = this->co_->SDOclient;
   SDORequest &r = this->sdo_active_;
+  // Discard only this client's unsent frame before replacing it with an abort.
+  // The driver and the SDO client run on the same main-loop context.
+  if (cli->CANtxBuff->bufferFull) {
+    cli->CANtxBuff->bufferFull = false;
+    cli->CANdevTx->CANtxCount--;
+  }
   CO_SDO_abortCode_t abort = CO_SDO_AB_GENERAL;
   CO_SDO_return_t ret;
   if (r.kind == SDOKind::SDO_KIND_READ || r.kind == SDOKind::SDO_KIND_READ_DATA) {
