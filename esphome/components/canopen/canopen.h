@@ -21,6 +21,8 @@
 
 namespace esphome::canopen {
 
+void discard_pending_tx(CO_CANmodule_t *mod, CO_CANtx_t *buf);
+
 NMTState to_nmt_state(CO_NMT_internalState_t state);
 
 // Other components configure the node in two phases:
@@ -299,6 +301,7 @@ class CANopenComponent : public Component {
   std::unique_ptr<uint8_t[]> sdo_rx_buf_;
   uint8_t sdo_abort_node_{0};  // node of the last cancelled transfer, see ABORT_GUARD_MS
   uint32_t sdo_abort_ms_{0};
+  bool sdo_abort_pending_{false};
 #endif
 
 #ifdef USE_CANOPEN_PDO
