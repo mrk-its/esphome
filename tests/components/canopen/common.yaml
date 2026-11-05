@@ -44,6 +44,14 @@ canopen:
       - logger.log:
           format: "EMCY node 0x%02x: 0x%04x"
           args: [node_id, emergency.error_code]
+  # no node_id: SDO client only (on the same canbus: it talks to canopen_node over the local loopback)
+  - id: canopen_client
+    canbus_id: can_bus
+    response_timeout: 200ms
+    on_heartbeat:
+      - logger.log:
+          format: "heartbeat from node 0x%02x"
+          args: [node_id]
 
 esphome:
   on_boot:
@@ -67,6 +75,7 @@ script:
   - id: canopen_sdo
     then:
       - canopen.sdo_write:
+          id: canopen_node
           node_id: 0x01
           index: 0x1017
           value: 1000
@@ -78,12 +87,32 @@ script:
                 format: "sdo_write: %s, abort 0x%08x"
                 args: ["LOG_STR_ARG(esphome::canopen::sdo_result_to_string(result))", "(unsigned) abort_code"]
       - canopen.sdo_write:
+          id: canopen_node
           node_id: !lambda "return 0x02;"
           index: 0x6040
           value: !lambda "return 0x0F;"
       - canopen.nmt:
+          id: canopen_node
           node_id: 0
           command: start
+      - canopen.sdo_read:
+          id: canopen_client
+          node_id: 0x10
+          index: 0x1018
+          subindex: 1
+          size: 4
+          on_value:
+            - logger.log:
+                format: "vendor id 0x%08x"
+                args: ["(unsigned) x"]
+          on_error:
+            - logger.log:
+                format: "sdo_read: %s, abort 0x%08x"
+                args: ["LOG_STR_ARG(esphome::canopen::sdo_result_to_string(result))", "(unsigned) abort_code"]
+      - canopen.sdo_read:
+          id: canopen_node
+          node_id: !lambda "return 0x01;"
+          index: 0x1000
       - lambda: |-
           id(canopen_node).read_sdo<uint32_t>(0x01, 0x1018, 1, +[](void *, const esphome::canopen::SDOReply &reply) {
             if (reply.ok())

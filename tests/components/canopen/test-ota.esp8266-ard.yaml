@@ -15,5 +15,6 @@ canbus:
 
 ota:
   - platform: canopen
+    canopen_id: canopen_node
 
 <<: !include common.yaml

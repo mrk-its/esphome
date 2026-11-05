@@ -8,7 +8,7 @@ import pytest
 from esphome.components.canopen import CONFIG_SCHEMA, SDO_WRITE_SCHEMA, enable_sdo_block
 from esphome.config import read_config
 import esphome.config_validation as cv
-from esphome.core import CORE
+from esphome.core import CORE, EsphomeError
 
 
 def _config(**kwargs):
@@ -238,3 +238,121 @@ def test_ota_codegen(
     assert "->set_reboot(false);" in main_cpp
     # block transfer at the default size: the hub's sdo_block_size isn't set
     assert "-DCO_CONFIG_SDO_SRV_BLKSIZE=16" in CORE.build_flags
+
+
+def _defines() -> set[str]:
+    return {define.name for define in CORE.defines}
+
+
+def test_client_only_codegen(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    """Without node_id the hub is an SDO client only: no node setters, the client compiled in."""
+    main_cpp = generate_main(component_config_path("client_only.yaml"))
+    assert "canopen::CANopenComponent(0)" in main_cpp
+    assert "canopen_client->set_response_timeout(200);" in main_cpp
+    assert "canopen_client->add_on_heartbeat_callback(" in main_cpp
+    for setter in (
+        "set_heartbeat_interval(",
+        "set_identity(",
+        "set_start_operational(",
+    ):
+        assert setter not in main_cpp
+    assert "USE_CANOPEN_SDO_CLIENT" in _defines()
+    assert "-DCO_CONFIG_SDO_CLI=0x0B" in CORE.build_flags
+    # no hub with a node id: the node part isn't compiled (nor linked from CANopenNode)
+    assert "USE_CANOPEN_NODE" not in _defines()
+    # canopen.sdo_read
+    assert "canopen::SDOReadAction<>" in main_cpp
+    assert "set_size(4);" in main_cpp
+    assert "get_value_trigger()" in main_cpp
+    assert "get_error_trigger()" in main_cpp
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        {"heartbeat_interval": "1s"},
+        {"heartbeat_clients": [{"node_id": 1, "timeout": "1s"}]},
+        {"nmt_startup": "pre_operational"},
+        {"identity": {"vendor_id": 1}},
+        {"device_name": "x"},
+        {"sdo_block_size": 16},
+    ],
+)
+def test_client_only_rejects_node_options(option: dict) -> None:
+    with pytest.raises(cv.Invalid, match="needs a CANopen node"):
+        CONFIG_SCHEMA({"canbus_id": "can_bus", **option})
+
+
+def test_client_only_sdo_client_false() -> None:
+    with pytest.raises(cv.Invalid, match="sdo_client: false without node_id"):
+        CONFIG_SCHEMA({"canbus_id": "can_bus", "sdo_client": False})
+
+
+def test_client_only_defaults() -> None:
+    """The node options get their defaults only with node_id."""
+    config = CONFIG_SCHEMA({"canbus_id": "can_bus"})
+    assert "node_id" not in config
+    config = CONFIG_SCHEMA(_config())
+    assert config["heartbeat_interval"].total_milliseconds == 5000
+
+
+@pytest.mark.parametrize(
+    ("yaml", "message"),
+    [
+        ("client_only_ota.yaml", "ota canopen needs a CANopen node"),
+        (
+            "sdo_client_false_client_only.yaml",
+            "sdo_client applies to every canopen hub of the firmware",
+        ),
+    ],
+)
+def test_client_only_invalid(
+    component_config_path: Callable[[str], Path],
+    capsys: pytest.CaptureFixture[str],
+    yaml: str,
+    message: str,
+) -> None:
+    CORE.config_path = component_config_path(yaml)
+    assert read_config({}) is None
+    assert message in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("yaml", "message"),
+    [
+        ("client_only_nmt.yaml", "canopen.nmt needs a CANopen node"),
+        (
+            "sdo_client_false_used.yaml",
+            "has sdo_client: false, but the SDO client is used",
+        ),
+    ],
+)
+def test_codegen_errors(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+    yaml: str,
+    message: str,
+) -> None:
+    with pytest.raises(EsphomeError, match=message):
+        generate_main(component_config_path(yaml))
+
+
+def test_sdo_client_auto(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    """A node compiles the client only if something uses it."""
+    generate_main(component_config_path("no_ota.yaml"))
+    assert "USE_CANOPEN_SDO_CLIENT" not in _defines()
+
+
+def test_sdo_client_true(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    generate_main(component_config_path("sdo_client_true.yaml"))
+    assert "USE_CANOPEN_SDO_CLIENT" in _defines()
+    assert "USE_CANOPEN_NODE" in _defines()
