@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+#include <chrono>
+#include <thread>
 
 #include "fake_canbus.h"
 
@@ -90,6 +92,40 @@ TEST_P(SdoCancellation, CancellingQueuedContextPreservesActiveRequest) {
   EXPECT_EQ(queued_callbacks, 0);
   EXPECT_EQ(this->bus.count(0x621), 1u);
   EXPECT_EQ(this->bus.count(0x622), 0u);
+}
+
+TEST_P(SdoCancellation, AbortGuardStartsAfterRecoveryWithoutIntermediateLoops) {
+  this->bus.busy = true;
+  this->queue_request();
+  this->hub.loop();
+  this->hub.cancel_sdo(&this->callbacks);
+  int other_callbacks = 0;
+  ASSERT_TRUE(this->hub.read_sdo<uint16_t>(0x21, 0x6041, 0, on_result, &other_callbacks));
+  std::this_thread::sleep_for(std::chrono::milliseconds(80));
+  this->bus.busy = false;
+  this->hub.loop();
+  ASSERT_EQ(this->bus.count(0x621), 1u);
+  EXPECT_EQ(this->bus.find(0x621)->data[0], 0x80);
+  std::this_thread::sleep_for(std::chrono::milliseconds(80));
+  this->hub.loop();
+  EXPECT_EQ(this->bus.count(0x621), 2u);
+}
+
+TEST_P(SdoCancellation, AbortGuardSurvivesRecoveryWithEmptyQueue) {
+  this->bus.busy = true;
+  this->queue_request();
+  this->hub.loop();
+  this->hub.cancel_sdo(&this->callbacks);
+  std::this_thread::sleep_for(std::chrono::milliseconds(80));
+  this->bus.busy = false;
+  this->hub.loop();
+  int other_callbacks = 0;
+  ASSERT_TRUE(this->hub.read_sdo<uint16_t>(0x21, 0x6041, 0, on_result, &other_callbacks));
+  this->hub.loop();
+  EXPECT_EQ(this->bus.count(0x621), 1u);
+  std::this_thread::sleep_for(std::chrono::milliseconds(80));
+  this->hub.loop();
+  EXPECT_EQ(this->bus.count(0x621), 2u);
 }
 
 INSTANTIATE_TEST_SUITE_P(ReadAndWrite, SdoCancellation, ::testing::Bool());
