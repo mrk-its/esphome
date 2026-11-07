@@ -46,12 +46,12 @@ class TestOta : public ProgramDownload {
   FakeBackend &backend() { return this->fake_; }
 
  protected:
-  ota::OTAResponseTypes backend_begin_() override { return this->fake_.begin(0); }
-  ota::OTAResponseTypes backend_write_(const uint8_t *data, size_t len) override {
+  ota::OTAResponseTypes backend_begin() override { return this->fake_.begin(0); }
+  ota::OTAResponseTypes backend_write(const uint8_t *data, size_t len) override {
     return this->fake_.write(const_cast<uint8_t *>(data), len);
   }
-  ota::OTAResponseTypes backend_end_() override { return this->fake_.end(); }
-  void backend_abort_() override { this->fake_.abort(); }
+  ota::OTAResponseTypes backend_end() override { return this->fake_.end(); }
+  void backend_abort() override { this->fake_.abort(); }
 
   FakeBackend fake_;
 };
