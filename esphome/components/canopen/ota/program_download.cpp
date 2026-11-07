@@ -4,7 +4,6 @@
 #include <cstring>
 
 #include "esphome/core/application.h"
-#include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
 namespace esphome::canopen {
@@ -23,7 +22,7 @@ void ProgramDownload::set_canopen(CANopenComponent *hub) {
 }
 
 void ProgramDownload::loop() {
-  if (millis() - this->phase_start_ms_ < this->delay_ms_)
+  if (App.get_loop_component_start_time() - this->phase_start_ms_ < this->delay_ms_)
     return;
   if (this->phase_ == PHASE_END_WAIT) {
     ota::OTAResponseTypes ret = this->backend_end_();
@@ -36,7 +35,7 @@ void ProgramDownload::loop() {
     this->notify_state_(ota::OTA_COMPLETED, 100.0f, 0);
 #endif
     this->phase_ = PHASE_REBOOT_WAIT;
-    this->phase_start_ms_ = millis();
+    this->phase_start_ms_ = App.get_loop_component_start_time();
   } else if (this->phase_ == PHASE_REBOOT_WAIT) {
     this->phase_ = PHASE_IDLE;
     this->disable_loop();
@@ -102,7 +101,7 @@ OdResult ProgramDownload::start_() {
   // (on some platforms the backend reboots right away).
   if (this->phase_ == PHASE_DOWNLOADED) {
     this->phase_ = PHASE_END_WAIT;
-    this->phase_start_ms_ = millis();
+    this->phase_start_ms_ = App.get_loop_component_start_time();
     this->enable_loop();
   }
   return OdResult::OD_RESULT_OK;
