@@ -2,8 +2,10 @@
 
 #include <vector>
 
-#include "301/crc16-ccitt.h"
+// canopen.h first: it reads defines.h (the CO_CONFIG_* values) before any CANopenNode header
 #include "esphome/components/canopen/canopen.h"
+
+#include "301/crc16-ccitt.h"
 #include "fake_canbus.h"
 
 namespace esphome::canopen::testing {

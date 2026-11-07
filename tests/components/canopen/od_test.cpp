@@ -20,17 +20,17 @@ static std::string read_var(ObjectDictionary &od, uint16_t index, OD_attr_t *att
 }
 
 TEST(CanopenOD, Strings) {
-  static const char name[] = "canopen test node";
-  static const char empty[] = "";
+  static const char NAME[] = "canopen test node";
+  static const char EMPTY[] = "";
   ObjectDictionary od;
   // added out of order: finalize() sorts
   od.add_string(0x100A, "2026.11.0");
-  od.add_string(0x1008, name);
-  od.add_string(0x1009, empty);
+  od.add_string(0x1008, NAME);
+  od.add_string(0x1009, EMPTY);
   od.finalize();
 
   OD_attr_t attr = 0;
-  EXPECT_EQ(read_var(od, 0x1008, &attr), name);
+  EXPECT_EQ(read_var(od, 0x1008, &attr), NAME);
   // read only, no ODA_STR (size known up front) and no ODA_MB (no byte order)
   EXPECT_EQ(attr, ODA_SDO_R);
   EXPECT_EQ(read_var(od, 0x100A), "2026.11.0");
