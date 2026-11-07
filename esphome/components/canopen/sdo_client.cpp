@@ -164,7 +164,12 @@ bool CANopenComponent::start_sdo_() {
 
 void CANopenComponent::process_sdo_(uint32_t dt_us) {
   if (!this->sdo_busy_) {
-    if (this->sdo_count_ == 0)
+    // Start the guard when the queued abort has left, even if no request is waiting yet.
+    if (this->sdo_abort_pending_) {
+      this->sdo_abort_ms_ = millis();
+      this->sdo_abort_pending_ = this->co_->SDOclient->CANtxBuff->bufferFull;
+    }
+    if (this->sdo_count_ == 0 || this->sdo_abort_pending_)
       return;
     if (this->sdo_queue_[this->sdo_head_].node_id == this->sdo_abort_node_) {
       if (millis() - this->sdo_abort_ms_ < ABORT_GUARD_MS)
@@ -263,25 +268,20 @@ void CANopenComponent::finish_sdo_(SDOResult result, uint32_t abort_code) {
 void CANopenComponent::abort_sdo_() {
   CO_SDOclient_t *cli = this->co_->SDOclient;
   SDORequest &r = this->sdo_active_;
+  // Discard only this client's unsent frame before replacing it with an abort.
+  // The driver and the SDO client run on the same main-loop context.
+  discard_pending_tx(cli->CANdevTx, cli->CANtxBuff);
   CO_SDO_abortCode_t abort = CO_SDO_AB_GENERAL;
-  CO_SDO_return_t ret;
   if (r.kind == SDOKind::SDO_KIND_READ || r.kind == SDOKind::SDO_KIND_READ_DATA) {
-    ret = CO_SDOclientUpload(cli, 0, true, &abort, nullptr, nullptr, nullptr);
+    CO_SDOclientUpload(cli, 0, true, &abort, nullptr, nullptr, nullptr);
   } else {
-    ret = CO_SDOclientDownload(cli, 0, true, false, &abort, nullptr, nullptr);
+    CO_SDOclientDownload(cli, 0, true, false, &abort, nullptr, nullptr);
   }
-  // CANopenNode sends the abort frame only if its TX buffer is free; otherwise the server would stay in the transfer
-  // and reject the next request (0x05040001). Requests to our own node have no server to tell (a client-only hub
-  // has no own node: NO_NODE_ID is never a request's node id).
-  if (ret != CO_SDO_RT_endedWithClientAbort && r.node_id != this->node_id_) {
-    const uint8_t frame[8] = {0x80, (uint8_t) r.index, (uint8_t) (r.index >> 8), r.sub, 0x00, 0x00, 0x00, 0x08};
-    this->canbus_->send_data(0x600 + r.node_id, false, false, frame, sizeof(frame));
-  }
-  ESP_LOGD(TAG, "node 0x%02x, 0x%04x:%u: cancelled (client abort %s)", r.node_id, r.index, r.sub,
-           ret == CO_SDO_RT_endedWithClientAbort ? LOG_STR_LITERAL("sent") : LOG_STR_LITERAL("sent directly"));
+  ESP_LOGD(TAG, "node 0x%02x, 0x%04x:%u: cancelled", r.node_id, r.index, r.sub);
   CO_SDOclientClose(cli);
   this->sdo_abort_node_ = r.node_id;
   this->sdo_abort_ms_ = millis();
+  this->sdo_abort_pending_ = cli->CANtxBuff->bufferFull;
   this->sdo_active_ = SDORequest{};
   this->sdo_busy_ = false;
 }
