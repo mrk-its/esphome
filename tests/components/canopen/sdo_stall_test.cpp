@@ -146,6 +146,33 @@ TEST_F(SdoStall, ReadOverTheCapacityIsAbortedAndStaysInTheBuffer) {
     EXPECT_EQ(buffer[i], 0xEE);
 }
 
+// The whole object arrives at once: the transfer is over, so no abort frame goes out, but the caller gets the reason.
+TEST_F(SdoStall, ReadOverTheCapacityInTheLastSegment) {
+  std::array<uint8_t, 4> buffer{};
+  ASSERT_TRUE(this->hub_.read_sdo_data(0x21, 0x1008, 0, buffer.data(), buffer.size(), on_reply, this));
+  this->hub_.loop();
+  this->hub_.frame(0x5A1, {0x41, 0x08, 0x10, 0, 7, 0, 0, 0});
+  this->hub_.loop();
+  this->hub_.frame(0x5A1, {0x01, 'd', 'i', 'm', 'm', 'e', 'r', '4'});
+  this->hub_.loop();
+  ASSERT_EQ(this->replies_.size(), 1u);
+  EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_ABORT);
+  EXPECT_EQ(this->replies_[0].abort_code, static_cast<uint32_t>(CO_SDO_AB_OUT_OF_MEM));
+  for (const auto &frame : this->bus_.sent)
+    EXPECT_NE(frame.data[0], 0x80);
+}
+
+TEST_F(SdoStall, ExpeditedReadOverTheCapacity) {
+  std::array<uint8_t, 2> buffer{};
+  ASSERT_TRUE(this->hub_.read_sdo_data(0x21, 0x1000, 0, buffer.data(), buffer.size(), on_reply, this));
+  this->hub_.loop();
+  this->hub_.frame(0x5A1, {0x43, 0x00, 0x10, 0, 1, 2, 3, 4});
+  this->hub_.loop();
+  ASSERT_EQ(this->replies_.size(), 1u);
+  EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_ABORT);
+  EXPECT_EQ(this->replies_[0].abort_code, static_cast<uint32_t>(CO_SDO_AB_OUT_OF_MEM));
+}
+
 TEST_F(SdoStall, ReadWithoutABufferIsRejected) {
   std::array<uint8_t, 4> buffer{};
   EXPECT_FALSE(this->hub_.read_sdo_data(0x21, 0x1008, 0, nullptr, 4, on_reply, this));
