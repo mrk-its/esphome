@@ -17,8 +17,6 @@ def override_manifest(manifest: ComponentManifestOverride) -> None:
         # the tests run nodes (and client-only hubs)
         cg.add_define("USE_CANOPEN_NODE")
         enable_sdo_client()
-        # read_sdo_data(), which the sdo_read_buffer_size option compiles in
-        cg.add_define("CANOPEN_SDO_READ_BUFFER_SIZE", 1024)
         enable_nmt_master()
         enable_pdo()
         # sdo_block_test.cpp: the announced download block size

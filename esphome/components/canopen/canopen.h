@@ -160,11 +160,10 @@ class CANopenComponent : public Component {
     return this->write_sdo(node_id, index, sub, raw, sizeof(T), callback, context);
   }
   // buffer transfers (strings, domains): segmented (every server supports it, block transfer is optional);
-  // write_sdo_data() doesn't copy: data must stay valid until the callback.
-#ifdef CANOPEN_SDO_READ_BUFFER_SIZE
-  // reads up to sdo_read_buffer_size bytes, the option that compiles it in
-  bool read_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, SDOCallback callback, void *context);
-#endif
+  // the buffers are the caller's and must stay valid until the callback (so not on the stack).
+  // read_sdo_data(): an object longer than capacity is aborted; reply.data is data.
+  bool read_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, uint8_t *data, size_t capacity, SDOCallback callback,
+                     void *context);
   bool write_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, const uint8_t *data, size_t len,
                       SDOCallback callback = nullptr, void *context = nullptr);
   // Drops all queued requests of context and aborts its transfer in flight, without callbacks.
@@ -280,8 +279,8 @@ class CANopenComponent : public Component {
     SDOKind kind;
     uint8_t size;  // read: expected size (0 = any); write: value size
     uint32_t value;
-    const uint8_t *data;  // WRITE_DATA, owned by the caller
-    size_t len;
+    uint8_t *data;  // READ_DATA, WRITE_DATA (only read): owned by the caller
+    size_t len;     // READ_DATA: capacity of data
     SDOCallback callback;
     void *context;
   };
@@ -312,12 +311,9 @@ class CANopenComponent : public Component {
   bool sdo_busy_{false};
   size_t sdo_offset_{0};  // WRITE/WRITE_DATA: bytes handed to the client fifo
   // READ/READ_DATA: bytes received (also those beyond the buffer, for the size checks), kept in sdo_rx_value_ (READ)
-  // or sdo_rx_buf_ (READ_DATA)
+  // or the caller's buffer (READ_DATA)
   size_t sdo_rx_len_{0};
   std::array<uint8_t, 4> sdo_rx_value_{};
-#ifdef CANOPEN_SDO_READ_BUFFER_SIZE
-  std::array<uint8_t, CANOPEN_SDO_READ_BUFFER_SIZE> sdo_rx_buf_{};
-#endif
   uint8_t sdo_abort_node_{0};       // node of the last cancelled transfer, see ABORT_GUARD_US
   uint32_t sdo_abort_guard_us_{0};  // time left before a request to sdo_abort_node_ may start
   bool sdo_abort_pending_{false};

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <vector>
 
 #include "esphome/components/canopen/canopen.h"
@@ -131,7 +132,8 @@ TEST_F(LocalPair, SdoBufferTransfersAreSegmented) {
   EXPECT_EQ(bus.count(0x610), 1u + 6u);
 
   bus.sent.clear();
-  ASSERT_TRUE(b.read_sdo_data(0x10, 0x2000, 0, on_reply, &result));
+  std::array<uint8_t, 64> buffer{};
+  ASSERT_TRUE(b.read_sdo_data(0x10, 0x2000, 0, buffer.data(), buffer.size(), on_reply, &result));
   run(2);
   ASSERT_EQ(result.done, 2);
   EXPECT_TRUE(result.reply.ok());

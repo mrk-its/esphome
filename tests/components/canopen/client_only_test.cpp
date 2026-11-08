@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -85,7 +86,8 @@ TEST_F(ClientOnly, ReadWriteAndBufferRead) {
   EXPECT_TRUE(result.reply.ok());
   EXPECT_EQ(value, 0x12345678u);
 
-  ASSERT_TRUE(client.read_sdo_data(0x10, 0x1008, 0, Result::on_reply, &result));
+  std::array<uint8_t, 32> buffer{};
+  ASSERT_TRUE(client.read_sdo_data(0x10, 0x1008, 0, buffer.data(), buffer.size(), Result::on_reply, &result));
   run(3);
   ASSERT_EQ(result.done, 3);
   EXPECT_TRUE(result.reply.ok());
