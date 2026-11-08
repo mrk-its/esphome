@@ -39,9 +39,11 @@ class CANopenNode {
   bool write_sdo(uint16_t index, uint8_t sub, T value, SDOCallback callback = nullptr, void *context = nullptr) {
     return this->canopen_->write_sdo<T>(this->node_id_, index, sub, value, callback, this->context_(context));
   }
+#ifdef CANOPEN_SDO_READ_BUFFER_SIZE
   bool read_sdo_data(uint16_t index, uint8_t sub, SDOCallback callback, void *context = nullptr) {
     return this->canopen_->read_sdo_data(this->node_id_, index, sub, callback, this->context_(context));
   }
+#endif
   // data must stay valid until the callback (not copied)
   bool write_sdo_data(uint16_t index, uint8_t sub, const uint8_t *data, size_t len, SDOCallback callback = nullptr,
                       void *context = nullptr) {

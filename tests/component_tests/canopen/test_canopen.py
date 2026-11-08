@@ -356,3 +356,37 @@ def test_sdo_client_true(
     generate_main(component_config_path("sdo_client_true.yaml"))
     assert "USE_CANOPEN_SDO_CLIENT" in _defines()
     assert "USE_CANOPEN_NODE" in _defines()
+
+
+def test_sdo_read_buffer_unset(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    """Without the option read_sdo_data() and its buffer aren't compiled."""
+    generate_main(component_config_path("sdo_client_true.yaml"))
+    assert "CANOPEN_SDO_READ_BUFFER_SIZE" not in _defines()
+
+
+def test_sdo_read_buffer_largest_wins(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+) -> None:
+    """The array is the same in every hub; the option also compiles in the SDO client."""
+    generate_main(component_config_path("sdo_read_buffer.yaml"))
+    assert "USE_CANOPEN_SDO_CLIENT" in _defines()
+    sizes = [
+        str(d.value) for d in CORE.defines if d.name == "CANOPEN_SDO_READ_BUFFER_SIZE"
+    ]
+    assert sizes == ["256"]
+
+
+@pytest.mark.parametrize(
+    ("size", "valid"), [(0, False), (1, True), (65535, True), (65536, False)]
+)
+def test_sdo_read_buffer_range(size: int, valid: bool) -> None:
+    config = _config(sdo_read_buffer_size=size)
+    if valid:
+        assert CONFIG_SCHEMA(config)["sdo_read_buffer_size"] == size
+    else:
+        with pytest.raises(cv.Invalid):
+            CONFIG_SCHEMA(config)

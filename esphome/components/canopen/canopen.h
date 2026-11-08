@@ -160,9 +160,11 @@ class CANopenComponent : public Component {
     return this->write_sdo(node_id, index, sub, raw, sizeof(T), callback, context);
   }
   // buffer transfers (strings, domains): segmented (every server supports it, block transfer is optional);
-  // reads up to 1024 bytes.
   // write_sdo_data() doesn't copy: data must stay valid until the callback.
+#ifdef CANOPEN_SDO_READ_BUFFER_SIZE
+  // reads up to sdo_read_buffer_size bytes, the option that compiles it in
   bool read_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, SDOCallback callback, void *context);
+#endif
   bool write_sdo_data(uint8_t node_id, uint16_t index, uint8_t sub, const uint8_t *data, size_t len,
                       SDOCallback callback = nullptr, void *context = nullptr);
   // Drops all queued requests of context and aborts its transfer in flight, without callbacks.
@@ -284,7 +286,11 @@ class CANopenComponent : public Component {
     void *context;
   };
   static constexpr size_t SDO_QUEUE_SIZE = 16;
-  static constexpr size_t SDO_MAX_UPLOAD = 1024;
+  // a value read only counts the bytes (SIZE_MISMATCH above 4); longer objects are aborted
+  static constexpr size_t SDO_MAX_VALUE_UPLOAD = 1024;
+  bool sdo_idle_() const {
+    return !this->sdo_busy_ && this->sdo_count_ == 0 && !this->sdo_abort_pending_ && this->sdo_abort_guard_us_ == 0;
+  }
   void add_sdo_client_od_();
   void config_sdo_client_(CO_config_t &cfg);
   // client-only mode; a node's client is initialised by CO_CANopenInit()
@@ -309,7 +315,9 @@ class CANopenComponent : public Component {
   // or sdo_rx_buf_ (READ_DATA)
   size_t sdo_rx_len_{0};
   std::array<uint8_t, 4> sdo_rx_value_{};
-  std::array<uint8_t, SDO_MAX_UPLOAD> sdo_rx_buf_{};
+#ifdef CANOPEN_SDO_READ_BUFFER_SIZE
+  std::array<uint8_t, CANOPEN_SDO_READ_BUFFER_SIZE> sdo_rx_buf_{};
+#endif
   uint8_t sdo_abort_node_{0};       // node of the last cancelled transfer, see ABORT_GUARD_US
   uint32_t sdo_abort_guard_us_{0};  // time left before a request to sdo_abort_node_ may start
   bool sdo_abort_pending_{false};

@@ -44,6 +44,7 @@ CONF_SDO_BLOCK_SIZE = "sdo_block_size"
 CONF_CANOPENNODE_PATH = "canopennode_path"
 CONF_RESPONSE_TIMEOUT = "response_timeout"
 CONF_SDO_CLIENT = "sdo_client"
+CONF_SDO_READ_BUFFER_SIZE = "sdo_read_buffer_size"
 CONF_SUBINDEX = "subindex"
 CONF_VENDOR_ID = "vendor_id"
 CONF_PRODUCT_CODE = "product_code"
@@ -119,6 +120,13 @@ def enable_sdo_client() -> None:
                 "canopen.sdo_write actions or a component); remove sdo_client: false"
             )
     cg.add_define("USE_CANOPEN_SDO_CLIENT")
+    # every hub has the same array, so the largest size wins
+    if sizes := [
+        hub[CONF_SDO_READ_BUFFER_SIZE]
+        for hub in _hub_configs()
+        if CONF_SDO_READ_BUFFER_SIZE in hub
+    ]:
+        cg.add_define("CANOPEN_SDO_READ_BUFFER_SIZE", max(sizes))
     # enable | segmented | local (requests to our own node id use our OD), with the fifo. No block transfer: it's
     # optional in CiA 301, a server without it aborts the request, and the client doesn't fall back to segmented.
     cg.add_build_flag("-DCO_CONFIG_SDO_CLI=0x0B")
@@ -361,6 +369,8 @@ CONFIG_SCHEMA = cv.All(
             # SDO client: unset = compiled in if something uses it; true = always (e.g. for lambdas); false = never
             # (an error if something uses it). Firmware-wide: one value for all canopen hubs.
             cv.Optional(CONF_SDO_CLIENT): cv.boolean,
+            # compiles in read_sdo_data() (only for lambdas, so codegen can't tell if it's used) with this buffer
+            cv.Optional(CONF_SDO_READ_BUFFER_SIZE): cv.int_range(min=1, max=65535),
             # SDO server block transfer, see enable_sdo_block(); without it segmented only. Firmware-wide: the
             # same on every canopen node
             cv.Optional(CONF_SDO_BLOCK_SIZE): cv.int_range(min=1, max=127),
@@ -453,7 +463,11 @@ async def to_code(config: ConfigType) -> None:
         cg.add(var.set_next_local(local[0]))
     local.append(var)
     cg.add(var.set_response_timeout(config[CONF_RESPONSE_TIMEOUT]))
-    if CONF_NODE_ID not in config or config.get(CONF_SDO_CLIENT):
+    if (
+        CONF_NODE_ID not in config
+        or config.get(CONF_SDO_CLIENT)
+        or CONF_SDO_READ_BUFFER_SIZE in config
+    ):
         enable_sdo_client()
     if CONF_NODE_ID not in config:
         # SDO client only: the node options' defaults don't apply (validate_client_only_options rejects them)

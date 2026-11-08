@@ -1,0 +1,13 @@
+# sdo_read_buffer_size, which compiles in read_sdo_data(): the gtests run that code.
+canbus:
+  - platform: esp32_can
+    id: can_bus
+    can_id: 0
+    bit_rate: 125kbps
+    tx_pin: GPIO12
+    rx_pin: GPIO14
+
+canopen:
+  - id: canopen_client
+    canbus_id: can_bus
+    sdo_read_buffer_size: 256
