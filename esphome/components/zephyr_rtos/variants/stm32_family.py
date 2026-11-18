@@ -5,14 +5,7 @@ per-signal set of pre-named alternate-function phandles Zephyr already
 declares (not free-mux like esp32/nordic/silabs), and remapping them isn't
 implemented yet. See platform_zephyr_todo memory for the open item."""
 
-import argparse
-from dataclasses import dataclass
-import logging
 from pathlib import Path
-import shutil
-import subprocess
-import tempfile
-import time
 
 import yaml
 
@@ -21,8 +14,6 @@ from esphome.types import ConfigType
 
 from ..const import KEY_RUNNER, SEGGER_RTT_UART
 from . import mcuboot_or_none
-
-_LOGGER = logging.getLogger(__name__)
 
 # Software UART drivers (devicetree compatible strings) that work on this family,
 # on top of its hardware UARTs.
@@ -79,20 +70,55 @@ def bootloader(advanced: ConfigType) -> str:
     return mcuboot_or_none(advanced)
 
 
-# Upload through an STM32 ROM bootloader's USB DFU (DfuSe) interface. Zephyr's dfu-util
-# runner writes every image with "leave", so the first one starts before the others are
-# written, and it fails on dfu-util's error after "leave" (Zephyr issue #126196).
+# Flashing through an STM32 DfuSe bootloader with Zephyr's dfu-util runner. Until
+# zephyrproject-rtos/zephyr#126198, that runner starts the first image of a multi-image
+# build (MCUboot) before the others are written, so MCUboot builds need a Zephyr with it.
 
 _DFU_UTIL_RUNNER = "dfu-util"
-_ROM_DFU_TIMEOUT = 30.0
+
+_DFU_BOARD_CMAKE = """\
+# Added by ESPHome: the STM32 ROM DFU bootloader, which the board's own files leave out.
+board_runner_args(dfu-util "--pid=0483:df11" "--alt=0" "--dfuse")
+include(${ZEPHYR_BASE}/boards/common/dfu-util.board.cmake)
+"""
 
 
-@dataclass(frozen=True)
-class DfuTarget:
-    """The DfuSe device to write: USB VID:PID and the alternate setting of its flash."""
+def _needs_dfu_runner() -> bool:
+    """Whether the board is flashed over DFU but its board files declare no dfu-util runner."""
+    from esphome.components.stm32.const import VARIANT_STM32C5  # noqa: PLC0415
 
-    usb_id: str = "0483:df11"  # every STM32 ROM bootloader
-    alt: str = "0"
+    from .. import zephyr_variant  # noqa: PLC0415
+
+    if zephyr_variant() == VARIANT_STM32C5:
+        from . import stm32c5  # noqa: PLC0415
+
+        return stm32c5.flashes_over_rom_dfu()
+    return False
+
+
+def write_dfu_board_root() -> tuple[Path | None, bool]:
+    """Write a board root whose board extension adds the dfu-util runner, for every
+    image of the build. Returns the root (None when the board needs none) and whether
+    its files changed, which needs a fresh CMake configure."""
+    from esphome.helpers import rmtree, write_file_if_changed  # noqa: PLC0415
+
+    from .. import zephyr_rtos_data  # noqa: PLC0415
+    from ..board_revision import parse_board_string  # noqa: PLC0415
+    from ..const import KEY_BOARD  # noqa: PLC0415
+
+    root = CORE.relative_build_path("zephyr/dfu_board_root")
+    if not _needs_dfu_runner():
+        if root.is_dir():
+            rmtree(root)
+            return None, True
+        return None, False
+    name = parse_board_string(zephyr_rtos_data()[KEY_BOARD]).name
+    board_dir = root / "boards" / "esphome" / f"{name}_dfu"
+    changed = write_file_if_changed(
+        board_dir / "board.yml", f"board:\n  extend: {name}\n"
+    )
+    changed |= write_file_if_changed(board_dir / "board.cmake", _DFU_BOARD_CMAKE)
+    return root, changed
 
 
 def _runners_yaml(build_dir: Path) -> dict:
@@ -105,151 +131,45 @@ def _runners_yaml(build_dir: Path) -> dict:
         return {}
 
 
-def _dfu_target(runners_yaml: dict) -> DfuTarget | None:
-    """The board's DfuSe device from its dfu-util runner arguments, or the STM32 ROM
-    bootloader when it has none. None for a plain DFU (not DfuSe) setup."""
-    args = (runners_yaml.get("args") or {}).get(_DFU_UTIL_RUNNER)
-    if args is None:
-        return DfuTarget()
-    parser = argparse.ArgumentParser(
-        add_help=False, allow_abbrev=False, exit_on_error=False
-    )
-    parser.add_argument("--pid", "-i", "--dev-id", dest="usb_id")
-    parser.add_argument("--alt")
-    parser.add_argument("--dfuse", action="store_true")
-    try:
-        parsed, _ = parser.parse_known_args(args)
-    except argparse.ArgumentError:
-        return None
-    if not parsed.dfuse:
-        return None
-    default = DfuTarget()
-    return DfuTarget(parsed.usb_id or default.usb_id, parsed.alt or default.alt)
-
-
 def uses_dfu(host: str) -> bool:
-    """`--device DFU`, or a serial port when the build flashes with dfu-util (the
-    advanced: runner:, else the board's default) or the variant asks for DFU."""
-    from esphome.components.stm32.const import VARIANT_STM32C5  # noqa: PLC0415
+    """`--device DFU`, or a serial port when the build flashes with dfu-util: the
+    advanced: runner:, else the board's default, or a board flashed over DFU anyway."""
     from esphome.upload_targets import PortType, get_port_type  # noqa: PLC0415
 
-    from .. import zephyr_rtos_data, zephyr_variant  # noqa: PLC0415
+    from .. import zephyr_rtos_data  # noqa: PLC0415
 
     if host == "DFU":
         return True
     if get_port_type(host) != PortType.SERIAL:
         return False
-    if zephyr_variant() == VARIANT_STM32C5:
-        from . import stm32c5  # noqa: PLC0415
-
-        if stm32c5.prefers_rom_dfu():
-            return True
-    runners_yaml = _runners_yaml(CORE.relative_build_path(".west_build"))
-    runner = zephyr_rtos_data().get(KEY_RUNNER) or runners_yaml.get("flash-runner")
-    return runner == _DFU_UTIL_RUNNER and _dfu_target(runners_yaml) is not None
-
-
-def _hex_start(hex_file: Path) -> int:
-    """Address of the first data record of an Intel HEX file."""
-    base = 0
-    for line in hex_file.read_text(encoding="utf-8").splitlines():
-        record = bytes.fromhex(line.strip()[1:])
-        offset, kind, data = int.from_bytes(record[1:3]), record[3], record[4:-1]
-        if kind == 0x00:
-            return base + offset
-        if kind == 0x02:
-            base = int.from_bytes(data) << 4
-        elif kind == 0x04:
-            base = int.from_bytes(data) << 16
-    raise EsphomeError(f"No data in {hex_file}")
-
-
-def _dfu_present(dfu_util: str, target: DfuTarget) -> bool:
-    result = subprocess.run(
-        [dfu_util, "-l", "-d", target.usb_id],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return f"[{target.usb_id}]" in result.stdout
-
-
-def _dfu_images(build_dir: Path) -> list[tuple[Path, int]]:
-    """Each sysbuild image's binary and the address it is written to, MCUboot first."""
-    app = build_dir / "zephyr" / "zephyr"
-    if (mcuboot := build_dir / "mcuboot" / "zephyr").is_dir():
-        stems = [mcuboot / "zephyr", app / "zephyr.signed"]
-    else:
-        stems = [app / "zephyr"]
-    images = []
-    for stem in stems:
-        binary, hex_file = (
-            stem.with_name(f"{stem.name}{ext}") for ext in (".bin", ".hex")
+    if _needs_dfu_runner():
+        return True
+    runner = zephyr_rtos_data().get(KEY_RUNNER)
+    if runner is None:
+        runner = _runners_yaml(CORE.relative_build_path(".west_build")).get(
+            "flash-runner"
         )
-        if not (binary.is_file() and hex_file.is_file()):
-            raise EsphomeError(f"{binary} not found; compile the firmware first")
-        # The HEX file holds the image's absolute address, the BIN file does not.
-        images.append((binary, _hex_start(hex_file)))
-    return images
+    return runner == _DFU_UTIL_RUNNER
 
 
-def upload_dfu() -> bool:
-    """Write every image through the DfuSe bootloader, then start the firmware."""
-    from ..build_zephyr import check_bootloader_built
-
-    if (dfu_util := shutil.which("dfu-util")) is None:
-        raise EsphomeError("dfu-util not found; install it to upload over USB DFU")
-    build_dir = CORE.relative_build_path(".west_build")
-    check_bootloader_built(build_dir)
-    images = _dfu_images(build_dir)
-    target = _dfu_target(_runners_yaml(build_dir)) or DfuTarget()
-    if not _dfu_present(dfu_util, target):
-        _LOGGER.info(
-            "Waiting for the DFU bootloader (%s): hold BOOT and press RESET",
-            target.usb_id,
+def check_dfu_util_runner(zephyr_base: Path, build_dir: Path) -> None:
+    """Refuse an MCUboot build when Zephyr's dfu-util runner would start MCUboot before
+    the application is written: it needs --no-reset support and the STM32 policy that
+    resets only after the last image."""
+    if not (build_dir / "mcuboot").is_dir():
+        return
+    runner = zephyr_base / "scripts" / "west_commands" / "runners" / "dfu.py"
+    soc_yml = zephyr_base / "soc" / "st" / "stm32" / "soc.yml"
+    try:
+        fixed = "reset=True" in runner.read_text(
+            encoding="utf-8"
+        ) and _DFU_UTIL_RUNNER in soc_yml.read_text(encoding="utf-8")
+    except OSError:
+        fixed = False
+    if not fixed:
+        raise EsphomeError(
+            "This Zephyr's dfu-util runner cannot flash an MCUboot build: it starts "
+            "MCUboot before the application is written "
+            "(https://github.com/zephyrproject-rtos/zephyr/pull/126198). Use a Zephyr "
+            "with that change in 'framework: source:', or flash with another runner."
         )
-        deadline = time.monotonic() + _ROM_DFU_TIMEOUT
-        while not _dfu_present(dfu_util, target):
-            if time.monotonic() > deadline:
-                raise EsphomeError(
-                    "The DFU bootloader did not appear. Hold BOOT, press RESET, "
-                    "and run the upload again."
-                )
-            time.sleep(0.5)
-    base_cmd = [dfu_util, "-d", target.usb_id, "-a", target.alt]
-    *first, (last, last_address) = images
-    for binary, address in first:
-        _LOGGER.info("Writing %s at %#010x", binary.name, address)
-        cmd = [*base_cmd, "-s", f"{address:#010x}", "-D", str(binary)]
-        _LOGGER.debug("bootloader cmd: %s", cmd)
-        if subprocess.run(cmd, check=False).returncode != 0:
-            raise EsphomeError(f"dfu-util failed writing {binary}")
-        _dfu_verify(base_cmd, binary, address)
-    # ":leave" makes the ROM bootloader start the firmware. It leaves USB at once, so
-    # dfu-util cannot read the final status and fails after a complete write.
-    _LOGGER.info("Writing %s at %#010x", last.name, last_address)
-    cmd = [*base_cmd, "-s", f"{last_address:#010x}:leave", "-D", str(last)]
-    _LOGGER.debug("app cmd: %s", cmd)
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-    _LOGGER.debug("%s", result.stdout)
-    if result.returncode != 0 and "Submitting leave request" not in result.stdout:
-        _LOGGER.error("%s", result.stderr)
-        raise EsphomeError(f"dfu-util failed writing {last}")
-    return True
-
-
-def _dfu_verify(base_cmd: list[str], binary: Path, address: int) -> None:
-    """Read an image back: the ROM bootloader reports success on write-protected pages
-    it leaves unchanged."""
-    expected = binary.read_bytes()
-    with tempfile.TemporaryDirectory() as tmp:
-        readback = Path(tmp) / "readback.bin"
-        cmd = [*base_cmd, "-s", f"{address:#010x}:{len(expected)}", "-U", str(readback)]
-        if subprocess.run(cmd, check=False, capture_output=True).returncode != 0:
-            raise EsphomeError(f"dfu-util failed reading back {binary}")
-        if readback.read_bytes() != expected:
-            raise EsphomeError(
-                f"Flash at {address:#010x} does not hold {binary.name} after writing it. "
-                "The pages are likely write protected (WRP option bytes), which the ROM "
-                "bootloader cannot change; clear the protection first."
-            )

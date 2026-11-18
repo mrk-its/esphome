@@ -587,6 +587,8 @@ def _sparse_clone_dts_from_source(
         url,
         ref or "default branch",
     )
+    # A fetch interrupted earlier leaves a git repository without boards/ behind.
+    shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True, exist_ok=True)
     try:
         # resolved_ref is always a concrete commit SHA -- always takes

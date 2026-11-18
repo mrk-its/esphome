@@ -189,7 +189,7 @@ def _xiao_config_schema(config: ConfigType) -> None:
     if not _is_xiao(config[CONF_BOARD]):
         return
     # With MCUboot, which replaces TinyUF2, the board is flashed over the ROM DFU
-    # bootloader (stm32_family.upload_dfu()), or over SWD with an advanced: runner:.
+    # bootloader with west's dfu-util runner, or over SWD with an advanced: runner:.
     if advanced[CONF_BOOTLOADER] != BOOTLOADER_MCUBOOT:
         advanced.setdefault(
             CONF_TINYUF2_TOUCH, declare_component_id(TinyUf2Touch)(None)
@@ -247,16 +247,17 @@ def uses_tinyuf2() -> bool:
     return _is_xiao(data[KEY_BOARD]) and data[KEY_BOOTLOADER] != BOOTLOADER_MCUBOOT
 
 
-def prefers_rom_dfu() -> bool:
-    """The XIAO with MCUboot and no advanced: runner: is flashed over its ROM DFU
-    bootloader: MCUboot replaces TinyUF2, and the board declares no other USB runner."""
+def flashes_over_rom_dfu() -> bool:
+    """The XIAO with MCUboot is flashed over its ROM DFU bootloader, unless another
+    advanced: runner: is set: MCUboot replaces TinyUF2, and the board declares no other
+    USB runner."""
     from .. import zephyr_rtos_data
 
     data = zephyr_rtos_data()
     return (
         _is_xiao(data[KEY_BOARD])
         and data[KEY_BOOTLOADER] == BOOTLOADER_MCUBOOT
-        and not data.get(KEY_RUNNER)
+        and data.get(KEY_RUNNER) in (None, "dfu-util")
     )
 
 

@@ -706,6 +706,47 @@ def test_sparse_clone_dts_from_source_refetches_when_schema_marker_missing(
     assert result == dest
 
 
+def test_sparse_clone_dts_from_source_clears_an_interrupted_fetch(
+    tmp_path: Path,
+) -> None:
+    """A fetch interrupted before boards/ was checked out leaves a git repository
+    with an origin remote behind; the next fetch must start from an empty folder."""
+    source = {
+        "url": "https://example.invalid/zephyr",
+        "ref": "my-branch",
+        KEY_SDK_SOURCE_RESOLVED_REF: _FAKE_RESOLVED_SHA,
+    }
+    dest = (
+        tmp_path
+        / "zephyr_dts_cache"
+        / _sdk_source_cache_key(source["url"], source["ref"])
+    )
+    (dest / ".git").mkdir(parents=True)  # no boards/: the checkout never happened
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if cmd[3:5] == ["remote", "add"] and (dest / ".git" / "leftover").exists():
+            raise subprocess.CalledProcessError(
+                3, cmd, stderr="error: remote origin already exists."
+            )
+        if cmd[:2] == ["git", "init"]:
+            Path(cmd[-1], "boards").mkdir(parents=True, exist_ok=True)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    (dest / ".git" / "leftover").write_text("origin remote of the interrupted fetch")
+    with (
+        patch(
+            "esphome.components.zephyr_rtos.dts_fetch._dts_cache_root",
+            return_value=tmp_path / "zephyr_dts_cache",
+        ),
+        patch("subprocess.run", side_effect=fake_run),
+        patch("esphome.components.zephyr_rtos.dts_fetch._sparse_clone_hal_modules"),
+    ):
+        result = _sparse_clone_dts_from_source(source)
+
+    assert result == dest
+    assert not (dest / ".git" / "leftover").exists()
+
+
 def test_sparse_clone_dts_from_source_refetches_when_resolved_ref_changed(
     tmp_path: Path,
 ) -> None:

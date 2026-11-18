@@ -1691,12 +1691,12 @@ def upload_program(config: ConfigType, args, host: str) -> bool:
         if stm32c5.uses_tinyuf2() and get_port_type(host) == PortType.SERIAL:
             return stm32c5.upload_program(host)
 
-    # STM32 DfuSe bootloaders (the ROM's, as a rule): dfu-util writes each image.
+    # STM32 DfuSe bootloaders (the ROM's, as a rule): west's dfu-util runner.
     if zephyr_variant_family() == "stm32":
         from .variants import stm32_family
 
         if stm32_family.uses_dfu(host):
-            return stm32_family.upload_dfu()
+            return _upload_west_flash(host, runner="dfu-util")
 
     # nRF52 with an Adafruit bootloader: BLE DFU, or 1200-baud touch then serial DFU.
     if zephyr_variant() == VARIANT_NRF52:
@@ -1731,7 +1731,11 @@ def upload_program(config: ConfigType, args, host: str) -> bool:
     # rather than esptool over a selected serial port.
     if get_port_type(host) != PortType.SERIAL:
         return False
+    return _upload_west_flash(host, runner=zephyr_rtos_data().get(KEY_RUNNER))
 
+
+def _upload_west_flash(host: str, runner: str | None) -> bool:
+    """Flash with `west flash`, using `runner`, or the board's default when None."""
     from .build_zephyr import resolve_dev_id, run_west_flash_generic
     from .framework_west import check_and_install as west_install
 
@@ -1747,7 +1751,10 @@ def upload_program(config: ConfigType, args, host: str) -> bool:
         hals=zephyr_west_hals(sdk),
     )
     build_dir = CORE.relative_build_path(".west_build")
-    configured_runner = zephyr_rtos_data().get(KEY_RUNNER)
+    if runner == "dfu-util" and zephyr_variant_family() == "stm32":
+        from .variants import stm32_family
+
+        stm32_family.check_dfu_util_runner(framework_path / "zephyr", build_dir)
     # Disambiguate which attached probe to flash when the effective runner supports
     # device IDs -- see resolve_dev_id() for why this can't just always be forwarded,
     # and #85 for the multi-probe problem it fixes.
@@ -1756,7 +1763,7 @@ def upload_program(config: ConfigType, args, host: str) -> bool:
         framework_path,
         build_dir,
         host,
-        runner_override=configured_runner,
+        runner_override=runner,
     )
     if dev_id:
         _LOGGER.info("Selecting probe %s (port %s) for west flash", dev_id, host)
@@ -1766,7 +1773,7 @@ def upload_program(config: ConfigType, args, host: str) -> bool:
         west_env,
         build_dir,
         dev_id,
-        runner=configured_runner,
+        runner=runner,
     ):
         raise EsphomeError("Zephyr west flash failed")
     return True
@@ -1823,6 +1830,14 @@ def run_compile(args, config: ConfigType) -> bool:
         )
     cmake_lists_changed = generate_cmake_lists()
     board = zephyr_rtos_data()[KEY_BOARD]
+    board_roots = [r for r in (zephyr_rtos_data().get(KEY_BOARD_ROOT),) if r]
+    if zephyr_variant_family() == "stm32":
+        from .variants import stm32_family
+
+        dfu_board_root, dfu_board_changed = stm32_family.write_dfu_board_root()
+        cmake_lists_changed |= dfu_board_changed
+        if dfu_board_root is not None:
+            board_roots.append(dfu_board_root)
 
     # West can't detect a missing CMake cache itself -- its pristine modes read
     # ZEPHYR_BASE from the very cache that was dropped. build_dir here must match
@@ -1841,7 +1856,7 @@ def run_compile(args, config: ConfigType) -> bool:
         west_env,
         sdk_install_dir=sdk_dir,
         extra_modules=extra_modules,
-        board_root=zephyr_rtos_data().get(KEY_BOARD_ROOT),
+        board_root=board_roots or None,
         snippets=zephyr_rtos_data()[KEY_SNIPPETS],
         shield_root=zephyr_rtos_data().get(KEY_SHIELD_ROOT),
         shields=zephyr_rtos_data()[KEY_SHIELDS],

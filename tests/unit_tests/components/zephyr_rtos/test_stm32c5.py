@@ -17,7 +17,7 @@ from esphome.components.zephyr_rtos.const import (
     CONF_RUNNER,
     KEY_ZEPHYR_RTOS,
 )
-from esphome.components.zephyr_rtos.variants import stm32_family, stm32c5
+from esphome.components.zephyr_rtos.variants import stm32c5
 from esphome.const import (
     CONF_ADVANCED,
     CONF_BOARD,
@@ -338,29 +338,16 @@ def test_reset_over_usb_touches_the_xiao_at_2001_baud(
     ("board", "bootloader", "runner", "expected"),
     [
         (XIAO, BOOTLOADER_MCUBOOT, None, True),
+        (XIAO, BOOTLOADER_MCUBOOT, "dfu-util", True),
         (XIAO, BOOTLOADER_MCUBOOT, "stm32cubeprogrammer", False),
         (XIAO, "", None, False),  # TinyUF2 takes the serial port
         (NUCLEO, BOOTLOADER_MCUBOOT, None, False),
     ],
 )
-def test_prefers_rom_dfu(
+def test_flashes_over_rom_dfu(
     tmp_path: Path, board: str, bootloader: str, runner: str | None, expected: bool
 ) -> None:
     _state(tmp_path, board)
     CORE.data[KEY_ZEPHYR_RTOS]["bootloader"] = bootloader
     CORE.data[KEY_ZEPHYR_RTOS]["runner"] = runner
-    assert stm32c5.prefers_rom_dfu() is expected
-
-
-def test_upload_program_uses_dfu_on_the_xiao_with_mcuboot(tmp_path: Path) -> None:
-    _state(tmp_path)
-    CORE.data[KEY_ZEPHYR_RTOS]["bootloader"] = BOOTLOADER_MCUBOOT
-    with (
-        patch("esphome.upload_targets.get_port_type", return_value=PortType.SERIAL),
-        patch("esphome.components.zephyr_rtos.build_zephyr.check_bootloader_built"),
-        patch.object(stm32_family, "upload_dfu", return_value=True) as mock_dfu,
-        patch.object(stm32c5, "upload_program") as mock_uf2,
-    ):
-        assert upload_program({PLATFORM_STM32: {CONF_FRAMEWORK: {}}}, object(), PORT)
-    mock_dfu.assert_called_once_with()
-    mock_uf2.assert_not_called()
+    assert stm32c5.flashes_over_rom_dfu() is expected

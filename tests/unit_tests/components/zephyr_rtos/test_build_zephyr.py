@@ -144,6 +144,31 @@ def test_resolve_dev_id_returns_none_when_runners_yaml_missing(
     assert resolve_dev_id(Path("python"), tmp_path, build_dir, "/dev/ttyACM0") is None
 
 
+@pytest.mark.parametrize("runner_override", [None, "dfu-util"])
+def test_resolve_dev_id_returns_none_for_dfu_util(
+    tmp_path: Path, runner_override: str | None
+) -> None:
+    """dfu-util's device ID is a USB VID:PID, not the serial number of the port."""
+    build_dir = tmp_path / "build"
+    (build_dir / "zephyr").mkdir(parents=True)
+    (build_dir / "zephyr" / "runners.yaml").write_text("flash-runner: dfu-util\n")
+    with patch(
+        "esphome.components.zephyr_rtos.build_zephyr._runner_supports_dev_id",
+        return_value=True,
+    ) as mock_supports:
+        assert (
+            resolve_dev_id(
+                Path("python"),
+                tmp_path,
+                build_dir,
+                "/dev/ttyACM0",
+                runner_override=runner_override,
+            )
+            is None
+        )
+    mock_supports.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # run_west_blobs_fetch -- fetch once per module revision
 # ---------------------------------------------------------------------------
@@ -284,6 +309,42 @@ def test_run_west_build_skip_bootloader_builds_only_the_app(
     cmd = run.call_args.args[0]
     assert (cmd[-2:] == ["--domain", "zephyr"]) is skip
     assert "--sysbuild" in cmd
+
+
+@pytest.mark.parametrize(
+    ("board_root", "expected"),
+    [
+        (None, None),
+        (Path("/boards"), "-DBOARD_ROOT=/boards"),
+        ([Path("/boards"), Path("/dfu")], "-DBOARD_ROOT=/boards;/dfu"),
+    ],
+)
+def test_run_west_build_passes_every_board_root(
+    tmp_path: Path, board_root: Path | list[Path] | None, expected: str | None
+) -> None:
+    CORE.build_path = tmp_path
+    CORE.skip_bootloader = False
+    mod = "esphome.components.zephyr_rtos.build_zephyr"
+    with (
+        patch(f"{mod}.run_command_ok", return_value=True) as run,
+        patch(f"{mod}._ccache_env", return_value={}),
+        patch(f"{mod}.pch.pch_enabled", return_value=False),
+        patch(f"{mod}.log_available_runners"),
+    ):
+        run_west_build(
+            Path("/py"),
+            tmp_path / "fw",
+            "board",
+            {},
+            tmp_path / "sdk",
+            board_root=board_root,
+        )
+    board_root_opts = [
+        arg
+        for arg in run.call_args.args[0]
+        if arg.startswith("--cmake-opt=-DBOARD_ROOT=")
+    ]
+    assert board_root_opts == ([] if expected is None else [f"--cmake-opt={expected}"])
 
 
 def _domains(build_dir: Path, *names: str) -> None:

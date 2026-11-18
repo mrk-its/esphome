@@ -226,7 +226,8 @@ def resolve_dev_id(
         return None
 
     flash_runner = runner_override or (runners_yaml or {}).get("flash-runner")
-    if flash_runner is None or not _runner_supports_dev_id(
+    # dfu-util's device ID is a USB VID:PID, not the serial number of a probe.
+    if flash_runner in (None, "dfu-util") or not _runner_supports_dev_id(
         python_executable, framework_path, flash_runner
     ):
         return None
@@ -399,7 +400,7 @@ def run_west_build(
     env: dict,
     sdk_install_dir: Path,
     extra_modules: list[Path] | None = None,
-    board_root: Path | None = None,
+    board_root: Path | list[Path] | None = None,
     snippets: list[str] | None = None,
     shield_root: Path | None = None,
     shields: list[str] | None = None,
@@ -440,7 +441,8 @@ def run_west_build(
         modules_list = ";".join(str(p) for p in extra_modules)
         west_cmd.append(f"--cmake-opt=-DEXTRA_ZEPHYR_MODULES={modules_list}")
     if board_root is not None:
-        west_cmd.append(f"--cmake-opt=-DBOARD_ROOT={board_root}")
+        roots = board_root if isinstance(board_root, list) else [board_root]
+        west_cmd.append(f"--cmake-opt=-DBOARD_ROOT={';'.join(str(r) for r in roots)}")
     if shield_root is not None:
         west_cmd.append(f"--cmake-opt=-DSHIELD_ROOT={shield_root}")
     if shields:
