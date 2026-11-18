@@ -9,6 +9,7 @@ import pytest
 
 from esphome.components.zephyr_rtos import mcuboot
 from esphome.components.zephyr_rtos.mcuboot import (
+    _compatible_swap_methods,
     _mcuboot_swap_limit,
     _read_slot_layout,
     check_mcuboot_swap_limit,
@@ -230,3 +231,46 @@ def test_read_slot_layout_warns_when_it_cannot_read(
         assert _read_slot_layout(mcuboot_dir) is None
     assert "Skipping the MCUboot slot size check" in caplog.text
     assert message in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("sectors0", "sectors1", "methods"),
+    [
+        (60, 60, ["move", "offset"]),
+        (61, 60, ["move"]),  # XIAO STM32C5: 488K and 480K of 8K sectors
+        (59, 60, ["offset"]),  # Nucleo C5: 472K and 480K
+        (62, 60, []),
+    ],
+)
+def test_compatible_swap_methods(sectors0: int, sectors1: int, methods: list) -> None:
+    assert _compatible_swap_methods(sectors0, sectors1) == methods
+
+
+XIAO_LAYOUT = {
+    "slot0": 488 * 1024,
+    "slot1": 480 * 1024,
+    "sector": 8192,
+    "write_size": 16,
+    "scratch": None,
+}
+
+
+@pytest.mark.parametrize(
+    ("config", "error"),
+    [
+        (OFFSET_AUTO, "slot0 has 61 sectors and slot1 60.*'swap_method: move'"),
+        ("CONFIG_BOOT_SWAP_USING_MOVE=y\nCONFIG_BOOT_MAX_IMG_SECTORS_AUTO=y\n", None),
+    ],
+)
+def test_check_mcuboot_swap_limit_rejects_slots_the_method_cannot_swap(
+    tmp_path: Path, config: str, error: str | None
+) -> None:
+    """MCUboot refuses such an upgrade without a word and keeps the old image."""
+    image = _mcuboot_build(tmp_path, config, 100_000)
+    with patch.object(mcuboot, "_read_slot_layout", return_value=XIAO_LAYOUT):
+        if error is None:
+            check_mcuboot_swap_limit(tmp_path, image)
+        else:
+            with pytest.raises(EsphomeError, match=error):
+                check_mcuboot_swap_limit(tmp_path, image)
+    assert image.is_file() is (error is None)

@@ -17,8 +17,7 @@ from esphome.components.zephyr_rtos.const import (
     CONF_RUNNER,
     KEY_ZEPHYR_RTOS,
 )
-from esphome.components.zephyr_rtos.variants import stm32c5
-import esphome.config_validation as cv
+from esphome.components.zephyr_rtos.variants import stm32_family, stm32c5
 from esphome.const import (
     CONF_ADVANCED,
     CONF_BOARD,
@@ -79,13 +78,14 @@ def test_config_schema_declares_the_touch_only_on_the_xiao(
     assert (stm32c5.CONF_TINYUF2_TOUCH in advanced) is declared
 
 
-def test_config_schema_requires_a_runner_for_mcuboot_on_the_xiao() -> None:
+def test_config_schema_accepts_mcuboot_on_the_xiao_without_a_runner() -> None:
+    """Without a runner it is flashed over the ROM DFU bootloader."""
     config = {
         CONF_BOARD: XIAO,
         CONF_FRAMEWORK: {CONF_ADVANCED: {CONF_BOOTLOADER: "mcuboot"}},
     }
-    with pytest.raises(cv.Invalid, match="runner"):
-        stm32c5._xiao_config_schema(config)
+    stm32c5._xiao_config_schema(config)
+    assert stm32c5.CONF_TINYUF2_TOUCH not in config[CONF_FRAMEWORK][CONF_ADVANCED]
 
 
 def test_config_schema_accepts_mcuboot_on_the_xiao_with_a_runner() -> None:
@@ -142,6 +142,43 @@ def test_to_code_turns_off_the_mcuboot_console_on_the_xiao(tmp_path: Path) -> No
     mock_conf.assert_called_once_with("UART_CONSOLE", False, image="mcuboot")
     mock_define.assert_not_called()
     mock_job.assert_not_called()
+
+
+def test_to_code_gives_both_images_the_offset_slots_on_the_xiao(
+    tmp_path: Path,
+) -> None:
+    """The app and MCUboot must agree on the slots, or MCUboot ignores every update."""
+    _state(tmp_path)
+    CORE.data[KEY_ZEPHYR_RTOS]["bootloader"] = BOOTLOADER_MCUBOOT
+    with (
+        patch("esphome.components.zephyr_rtos.zephyr_add_prj_conf"),
+        patch("esphome.components.zephyr_rtos.zephyr_add_overlay") as mock_overlay,
+        patch(f"{_DTS}.dts_node_enabled", return_value=True),
+        patch(f"{_DTS}.has_pinctrl_configured", return_value=True),
+    ):
+        stm32c5._xiao_to_code({CONF_BOARD: XIAO, CONF_FRAMEWORK: {CONF_ADVANCED: {}}})
+    slots = stm32c5._XIAO_MCUBOOT_SLOTS
+    assert mock_overlay.call_args_list == [
+        ((slots,), {}),
+        ((slots,), {"image": "mcuboot"}),
+    ]
+    # slot1 one 8K sector larger than slot0, as swap-using-offset needs
+    assert "reg = <0x00008000 0x78000>" in slots
+    assert "reg = <0x00080000 0x7a000>" in slots
+
+
+def test_to_code_keeps_the_board_slots_for_tinyuf2(tmp_path: Path) -> None:
+    _state(tmp_path)
+    with (
+        patch("esphome.components.zephyr_rtos.zephyr_add_prj_conf"),
+        patch("esphome.components.zephyr_rtos.zephyr_add_overlay") as mock_overlay,
+        patch(f"{_DTS}.dts_node_enabled", return_value=True),
+        patch(f"{_DTS}.has_pinctrl_configured", return_value=True),
+        patch.object(stm32c5.cg, "add_define"),
+        patch.object(CORE, "add_job"),
+    ):
+        stm32c5._xiao_to_code({CONF_BOARD: XIAO, CONF_FRAMEWORK: {CONF_ADVANCED: {}}})
+    mock_overlay.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -295,3 +332,35 @@ def test_reset_over_usb_touches_the_xiao_at_2001_baud(
         assert mock_serial.call_args.kwargs["baudrate"] == 2001
     else:
         mock_serial.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("board", "bootloader", "runner", "expected"),
+    [
+        (XIAO, BOOTLOADER_MCUBOOT, None, True),
+        (XIAO, BOOTLOADER_MCUBOOT, "stm32cubeprogrammer", False),
+        (XIAO, "", None, False),  # TinyUF2 takes the serial port
+        (NUCLEO, BOOTLOADER_MCUBOOT, None, False),
+    ],
+)
+def test_prefers_rom_dfu(
+    tmp_path: Path, board: str, bootloader: str, runner: str | None, expected: bool
+) -> None:
+    _state(tmp_path, board)
+    CORE.data[KEY_ZEPHYR_RTOS]["bootloader"] = bootloader
+    CORE.data[KEY_ZEPHYR_RTOS]["runner"] = runner
+    assert stm32c5.prefers_rom_dfu() is expected
+
+
+def test_upload_program_uses_dfu_on_the_xiao_with_mcuboot(tmp_path: Path) -> None:
+    _state(tmp_path)
+    CORE.data[KEY_ZEPHYR_RTOS]["bootloader"] = BOOTLOADER_MCUBOOT
+    with (
+        patch("esphome.upload_targets.get_port_type", return_value=PortType.SERIAL),
+        patch("esphome.components.zephyr_rtos.build_zephyr.check_bootloader_built"),
+        patch.object(stm32_family, "upload_dfu", return_value=True) as mock_dfu,
+        patch.object(stm32c5, "upload_program") as mock_uf2,
+    ):
+        assert upload_program({PLATFORM_STM32: {CONF_FRAMEWORK: {}}}, object(), PORT)
+    mock_dfu.assert_called_once_with()
+    mock_uf2.assert_not_called()

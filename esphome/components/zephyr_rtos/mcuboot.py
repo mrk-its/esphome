@@ -138,6 +138,20 @@ def _mcuboot_swap_limit(
     return trailer_off - padding
 
 
+def _compatible_swap_methods(sectors0: int, sectors1: int) -> list[str]:
+    """The move/offset methods whose sector count rule two slots meet.
+
+    Mirrors boot_slots_compatible() in MCUboot's swap_move.c and swap_offset.c: move needs
+    slot0 to have as many sectors as slot1 or one more, offset needs slot1 to.
+    """
+    methods = []
+    if sectors0 in (sectors1, sectors1 + 1):
+        methods.append("move")
+    if sectors1 in (sectors0, sectors0 + 1):
+        methods.append("offset")
+    return methods
+
+
 def _read_kconfig(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -237,6 +251,24 @@ def check_mcuboot_swap_limit(build_dir: Path, image: Path) -> None:
     layout = _read_slot_layout(mcuboot_dir)
     if layout is None:
         return
+
+    if method in ("move", "offset"):
+        sectors0 = layout["slot0"] // layout["sector"]
+        sectors1 = layout["slot1"] // layout["sector"]
+        fitting = _compatible_swap_methods(sectors0, sectors1)
+        if method not in fitting:
+            # MCUboot logs "Cannot upgrade" (if it logs at all) and keeps booting the old image
+            image.unlink()
+            hint = (
+                f"set 'swap_method: {fitting[0]}' in the ota: block"
+                if fitting
+                else "change the slot partitions"
+            )
+            raise EsphomeError(
+                f"MCUboot's swap_method '{method}' cannot install updates with this "
+                f"board's slots: slot0 has {sectors0} sectors and slot1 {sectors1}. "
+                f"Every OTA update would be ignored; {hint}."
+            )
 
     if config.get("CONFIG_BOOT_MAX_IMG_SECTORS_AUTO") == "y":
         # MCUboot's CMakeLists.txt: the larger slot's sector count

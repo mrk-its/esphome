@@ -25,6 +25,7 @@ from ..const import (
     CONF_RUNNER,
     KEY_BOARD,
     KEY_BOOTLOADER,
+    KEY_RUNNER,
     zephyr_rtos_ns,
 )
 from ..partitions import BootLayout
@@ -143,6 +144,29 @@ _XIAO_DBL_TAP_ADDR = 0x2003FFFC
 _XIAO_UF2_USB_ID = ("2886", "00c5")
 _UF2_DISK_TIMEOUT = 15.0
 
+# The board's slots, sized for TinyUF2's app, give slot0 a sector more than slot1 (488K and
+# 480K), which MCUboot's swap-using-offset refuses to swap. With MCUboot, slot0 shrinks to
+# 480K and slot1 takes the unused 8K at 0x80000, the start of flash bank 2: 488K up to the
+# storage partition. Offset swaps that with one erase per sector, where move needs two.
+_XIAO_MCUBOOT_SLOTS = """\
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+&flash0 {
+	partitions {
+		slot0_partition: partition@8000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-0";
+			reg = <0x00008000 0x78000>;
+		};
+		slot1_partition: partition@80000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-1";
+			reg = <0x00080000 0x7a000>;
+		};
+	};
+};
+"""
+
 TinyUf2Touch = zephyr_rtos_ns.class_("TinyUf2Touch", cg.Component)
 CONF_TINYUF2_TOUCH = "tinyuf2_touch"
 
@@ -164,14 +188,9 @@ def _xiao_config_schema(config: ConfigType) -> None:
     advanced = config[CONF_FRAMEWORK][CONF_ADVANCED]
     if not _is_xiao(config[CONF_BOARD]):
         return
-    if advanced[CONF_BOOTLOADER] == BOOTLOADER_MCUBOOT:
-        if CONF_RUNNER not in advanced:
-            raise cv.Invalid(
-                "MCUboot replaces the XIAO STM32C5's TinyUF2 bootloader, so it is "
-                "flashed over SWD; set the runner, for example 'runner: stm32cubeprogrammer'",
-                [CONF_FRAMEWORK, CONF_ADVANCED, CONF_RUNNER],
-            )
-    else:
+    # With MCUboot, which replaces TinyUF2, the board is flashed over the ROM DFU
+    # bootloader (stm32_family.upload_dfu()), or over SWD with an advanced: runner:.
+    if advanced[CONF_BOOTLOADER] != BOOTLOADER_MCUBOOT:
         advanced.setdefault(
             CONF_TINYUF2_TOUCH, declare_component_id(TinyUf2Touch)(None)
         )
@@ -193,6 +212,9 @@ def _xiao_to_code(config: ConfigType) -> None:
         else:
             # MCUboot is built without USB, so the board's USB console does not exist in it.
             zephyr_add_prj_conf("UART_CONSOLE", False, image="mcuboot")
+            # The app and MCUboot must agree on the slots.
+            zephyr_add_overlay(_XIAO_MCUBOOT_SLOTS)
+            zephyr_add_overlay(_XIAO_MCUBOOT_SLOTS, image="mcuboot")
         # The board DTS has no USB clock or pins; each is added only while it is missing.
         if not dts_node_enabled(config[CONF_BOARD], "clk48"):
             # HSE is 48 MHz on this board.
@@ -223,6 +245,19 @@ def uses_tinyuf2() -> bool:
 
     data = zephyr_rtos_data()
     return _is_xiao(data[KEY_BOARD]) and data[KEY_BOOTLOADER] != BOOTLOADER_MCUBOOT
+
+
+def prefers_rom_dfu() -> bool:
+    """The XIAO with MCUboot and no advanced: runner: is flashed over its ROM DFU
+    bootloader: MCUboot replaces TinyUF2, and the board declares no other USB runner."""
+    from .. import zephyr_rtos_data
+
+    data = zephyr_rtos_data()
+    return (
+        _is_xiao(data[KEY_BOARD])
+        and data[KEY_BOOTLOADER] == BOOTLOADER_MCUBOOT
+        and not data.get(KEY_RUNNER)
+    )
 
 
 def _usb_id(disk: Path) -> tuple[str, str] | None:

@@ -1691,6 +1691,13 @@ def upload_program(config: ConfigType, args, host: str) -> bool:
         if stm32c5.uses_tinyuf2() and get_port_type(host) == PortType.SERIAL:
             return stm32c5.upload_program(host)
 
+    # STM32 DfuSe bootloaders (the ROM's, as a rule): dfu-util writes each image.
+    if zephyr_variant_family() == "stm32":
+        from .variants import stm32_family
+
+        if stm32_family.uses_dfu(host):
+            return stm32_family.upload_dfu()
+
     # nRF52 with an Adafruit bootloader: BLE DFU, or 1200-baud touch then serial DFU.
     if zephyr_variant() == VARIANT_NRF52:
         from .variants import nrf52
