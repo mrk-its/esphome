@@ -1624,6 +1624,25 @@ async def _upload_mcumgr_ble(host: str, file: str) -> None:
     await _smpmgr_upload(address, file)
 
 
+def upload_options(config: ConfigType) -> list[tuple[str, str]]:
+    """Extra entries for the device chooser: (label, device) pairs, such as an
+    STM32 board waiting in its DFU bootloader."""
+    if KEY_ZEPHYR_RTOS not in CORE.data:
+        zephyr_config = config.get(CORE.target_platform)
+        if not zephyr_config:
+            return []
+        try:
+            _restore_upload_data(zephyr_config)
+        except EsphomeError as err:
+            _LOGGER.debug("No extra upload options: %s", err)
+            return []
+    if zephyr_variant_family() != "stm32":
+        return []
+    from .variants import stm32_family
+
+    return stm32_family.upload_options()
+
+
 def upload_program(config: ConfigType, args, host: str) -> bool:
     if KEY_ZEPHYR_RTOS not in CORE.data:
         zephyr_config = config.get(CORE.target_platform)
@@ -1638,7 +1657,11 @@ def upload_program(config: ConfigType, args, host: str) -> bool:
     from esphome.components.stm32.const import VARIANT_STM32C5
     from esphome.upload_targets import PortType, get_port_type
 
-    if host == "PYOCD" or get_port_type(host) in (PortType.SERIAL, PortType.BOOTSEL):
+    if host == "PYOCD" or get_port_type(host) in (
+        PortType.SERIAL,
+        PortType.BOOTSEL,
+        PortType.DFU,
+    ):
         from .build_zephyr import check_bootloader_built
 
         # Every non-OTA path writes the bootloader too

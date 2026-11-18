@@ -5,7 +5,10 @@ per-signal set of pre-named alternate-function phandles Zephyr already
 declares (not free-mux like esp32/nordic/silabs), and remapping them isn't
 implemented yet. See platform_zephyr_todo memory for the open item."""
 
+import logging
 from pathlib import Path
+import shutil
+import subprocess
 
 import yaml
 
@@ -14,6 +17,8 @@ from esphome.types import ConfigType
 
 from ..const import KEY_RUNNER, SEGGER_RTT_UART
 from . import mcuboot_or_none
+
+_LOGGER = logging.getLogger(__name__)
 
 # Software UART drivers (devicetree compatible strings) that work on this family,
 # on top of its hardware UARTs.
@@ -131,17 +136,11 @@ def _runners_yaml(build_dir: Path) -> dict:
         return {}
 
 
-def uses_dfu(host: str) -> bool:
-    """`--device DFU`, or a serial port when the build flashes with dfu-util: the
-    advanced: runner:, else the board's default, or a board flashed over DFU anyway."""
-    from esphome.upload_targets import PortType, get_port_type  # noqa: PLC0415
-
+def _flashes_with_dfu_util() -> bool:
+    """Whether the build flashes with dfu-util: the advanced: runner:, else the board's
+    default, or a board flashed over DFU anyway."""
     from .. import zephyr_rtos_data  # noqa: PLC0415
 
-    if host == "DFU":
-        return True
-    if get_port_type(host) != PortType.SERIAL:
-        return False
     if _needs_dfu_runner():
         return True
     runner = zephyr_rtos_data().get(KEY_RUNNER)
@@ -150,6 +149,65 @@ def uses_dfu(host: str) -> bool:
             "flash-runner"
         )
     return runner == _DFU_UTIL_RUNNER
+
+
+def uses_dfu(host: str) -> bool:
+    """`--device DFU`, or a serial port when the build flashes with dfu-util."""
+    from esphome.upload_targets import PortType, get_port_type  # noqa: PLC0415
+
+    port_type = get_port_type(host)
+    if port_type == PortType.DFU:
+        return True
+    return port_type == PortType.SERIAL and _flashes_with_dfu_util()
+
+
+# The STM32 ROM bootloader, unless the board's dfu-util runner arguments name another
+_ROM_DFU_USB_ID = "0483:df11"
+_DFU_UDEV_HINT = (
+    "Add a udev rule that gives your user access, for example: "
+    'SUBSYSTEM=="usb", ATTR{idVendor}=="0483", ATTR{idProduct}=="df11", '
+    'GROUP="plugdev", MODE="0660"'
+)
+
+
+def _dfu_usb_id() -> str:
+    args = (
+        _runners_yaml(CORE.relative_build_path(".west_build")).get("args") or {}
+    ).get(_DFU_UTIL_RUNNER) or []
+    for index, arg in enumerate(args):
+        if arg.startswith("--pid="):
+            return arg.split("=", 1)[1]
+        if arg == "--pid" and index + 1 < len(args):
+            return args[index + 1]
+    return _ROM_DFU_USB_ID
+
+
+def upload_options() -> list[tuple[str, str]]:
+    """The device chooser's DFU entry, when the build flashes with dfu-util and its
+    device is attached."""
+    if not _flashes_with_dfu_util() or (dfu_util := shutil.which("dfu-util")) is None:
+        return []
+    usb_id = _dfu_usb_id()
+    try:
+        result = subprocess.run(
+            [dfu_util, "-l", "-d", usb_id],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    output = result.stdout + result.stderr
+    if f"Found DFU: [{usb_id}]" in output:
+        return [(f"DFU bootloader ({usb_id}, via dfu-util)", "DFU")]
+    if f"Cannot open DFU device {usb_id}" in output:
+        _LOGGER.warning(
+            "A DFU device (%s) was found but cannot be opened. %s",
+            usb_id,
+            _DFU_UDEV_HINT,
+        )
+    return []
 
 
 def check_dfu_util_runner(zephyr_base: Path, build_dir: Path) -> None:

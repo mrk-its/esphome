@@ -46,7 +46,7 @@ _LOGGER = logging.getLogger(__name__)
 # default. has_network_ota is asked several times per run, and losing it
 # is already reported by the upload_program warning.
 COSMETIC_HOOKS: Final = frozenset(
-    {"process_stacktrace", "ota_image", "has_network_ota"}
+    {"process_stacktrace", "ota_image", "has_network_ota", "upload_options"}
 )
 
 # Platforms built by zephyr_rtos
@@ -109,6 +109,8 @@ PLATFORM_HOOKS: Final[dict[str, frozenset[str]]] = {
     "process_stacktrace": frozenset(STACKTRACE_GATES),
     # The file an app update sends, when it is not the build output itself
     "ota_image": frozenset({PLATFORM_BK72XX, PLATFORM_LN882X, PLATFORM_RTL87XX}),
+    # Extra device chooser entries, such as a board waiting in its DFU bootloader
+    "upload_options": frozenset({PLATFORM_STM32}),
 }
 
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -170,3 +172,87 @@ def test_upload_program_flashes_with_dfu_util(tmp_path: Path, board: str) -> Non
     ):
         assert upload_program({PLATFORM_STM32: {CONF_FRAMEWORK: {}}}, object(), PORT)
     mock_flash.assert_called_once_with(PORT, runner="dfu-util")
+
+
+def _write_dfu_args(tmp_path: Path, args: list[str]) -> None:
+    path = tmp_path / ".west_build" / "zephyr" / "runners.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump({"flash-runner": "dfu-util", "args": {"dfu-util": args}}),
+        encoding="utf-8",
+    )
+
+
+def _dfu_list(output: str) -> SimpleNamespace:
+    return SimpleNamespace(returncode=0, stdout=output, stderr="")
+
+
+@pytest.mark.parametrize(
+    ("args", "output", "expected"),
+    [
+        (
+            ["--pid=0483:df11", "--alt=0", "--dfuse"],
+            'Found DFU: [0483:df11] ver=0300, devnum=33, cfg=1, intf=0, alt=0, name="@Internal Flash"',
+            [("DFU bootloader (0483:df11, via dfu-util)", "DFU")],
+        ),
+        (
+            ["--pid", "1209:db42", "--alt", "0"],
+            "Found DFU: [1209:db42] ver=0100, devnum=4, cfg=1, intf=0, alt=0",
+            [("DFU bootloader (1209:db42, via dfu-util)", "DFU")],
+        ),
+        (["--pid=0483:df11", "--alt=0", "--dfuse"], "", []),  # not in DFU mode
+    ],
+)
+def test_upload_options_lists_an_attached_dfu_device(
+    tmp_path: Path, args: list[str], output: str, expected: list
+) -> None:
+    _state(tmp_path)
+    _write_dfu_args(tmp_path, args)
+    with (
+        patch.object(stm32_family.shutil, "which", return_value="dfu-util"),
+        patch.object(
+            stm32_family.subprocess, "run", return_value=_dfu_list(output)
+        ) as mock_run,
+    ):
+        assert stm32_family.upload_options() == expected
+    usb_id = expected[0][0].split("(")[1].split(",")[0] if expected else "0483:df11"
+    assert mock_run.call_args.args[0] == ["dfu-util", "-l", "-d", usb_id]
+
+
+def test_upload_options_warns_when_the_device_cannot_be_opened(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _state(tmp_path)
+    _write_dfu_args(tmp_path, ["--pid=0483:df11", "--alt=0", "--dfuse"])
+    output = "dfu-util: Cannot open DFU device 0483:df11 found on devnum 33 (LIBUSB_ERROR_ACCESS)"
+    with (
+        patch.object(stm32_family.shutil, "which", return_value="dfu-util"),
+        patch.object(stm32_family.subprocess, "run", return_value=_dfu_list(output)),
+    ):
+        assert stm32_family.upload_options() == []
+    assert "udev rule" in caplog.text
+
+
+def test_upload_options_needs_dfu_util_and_a_dfu_build(tmp_path: Path) -> None:
+    _state(tmp_path)
+    _write_runners_yaml(tmp_path, "stm32cubeprogrammer")
+    with patch.object(stm32_family.subprocess, "run") as mock_run:
+        assert stm32_family.upload_options() == []  # not flashed with dfu-util
+        _write_runners_yaml(tmp_path, "dfu-util")
+        with patch.object(stm32_family.shutil, "which", return_value=None):
+            assert stm32_family.upload_options() == []  # dfu-util not installed
+    mock_run.assert_not_called()
+
+
+def test_upload_options_survives_a_hanging_dfu_util(tmp_path: Path) -> None:
+    _state(tmp_path)
+    _write_runners_yaml(tmp_path, "dfu-util")
+    with (
+        patch.object(stm32_family.shutil, "which", return_value="dfu-util"),
+        patch.object(
+            stm32_family.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(["dfu-util"], 10),
+        ),
+    ):
+        assert stm32_family.upload_options() == []

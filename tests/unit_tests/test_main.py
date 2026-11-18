@@ -120,6 +120,7 @@ from esphome.const import (
     PLATFORM_HOST,
     PLATFORM_NRF52,
     PLATFORM_RP2,
+    PLATFORM_STM32,
     ErrorFormat,
     Toolchain,
 )
@@ -1346,6 +1347,32 @@ def test_choose_upload_log_host_no_defaults_with_rp2040_bootsel(
 
 
 @pytest.mark.usefixtures("mock_no_serial_ports")
+@pytest.mark.parametrize(
+    ("purpose", "offered"), [(Purpose.UPLOADING, True), (Purpose.LOGGING, False)]
+)
+def test_choose_upload_log_host_offers_platform_upload_options(
+    mock_choose_prompt: Mock, purpose: Purpose, offered: bool
+) -> None:
+    """A platform's upload_options hook adds targets such as a DFU bootloader."""
+    setup_core(platform=PLATFORM_STM32)
+    option = ("DFU bootloader (0483:df11, via dfu-util)", "DFU")
+    hook = Mock(return_value=[option])
+
+    def get_hook(platform: str, name: str) -> Mock | None:
+        return hook if name == "upload_options" else None
+
+    with patch(
+        "esphome.__main__.platform_hooks.get_platform_hook", side_effect=get_hook
+    ):
+        choose_upload_log_host(default=None, check_default=None, purpose=purpose)
+    if offered:
+        mock_choose_prompt.assert_called_once_with([option], purpose=purpose)
+        hook.assert_called_once_with(CORE.config)
+    else:
+        hook.assert_not_called()
+
+
+@pytest.mark.usefixtures("mock_no_serial_ports")
 def test_choose_upload_log_host_rp2040_no_device_shows_bootsel_help() -> None:
     """Test BOOTSEL instructions shown when no RP2040 device found."""
     setup_core(platform=PLATFORM_RP2)
@@ -1981,6 +2008,28 @@ def test_upload_program_bootsel_failed(
     assert exit_code == 1
     assert host is None
     mock_upload_using_picotool.assert_called_once_with(config)
+
+
+def test_upload_program_dfu_through_the_platform_has_no_log_device() -> None:
+    """A DFU bootloader is not a serial port: command_run() waits for the app's port."""
+    setup_core(platform=PLATFORM_STM32)
+    with patch(
+        "esphome.__main__.platform_hooks.get_platform_hook",
+        return_value=lambda *_: True,
+    ):
+        assert upload_program({}, MockArgs(), ["DFU"]) == (0, None)
+
+
+def test_upload_program_dfu_unsupported_by_the_platform() -> None:
+    setup_core(platform=PLATFORM_ESP32)
+    with (
+        patch(
+            "esphome.__main__.platform_hooks.get_platform_hook",
+            return_value=lambda *_: False,
+        ),
+        pytest.raises(EsphomeError, match="DFU uploads are not supported"),
+    ):
+        upload_program({}, MockArgs(), ["DFU"])
 
 
 def test_upload_using_picotool_success(tmp_path: Path) -> None:
@@ -7350,6 +7399,34 @@ def test_command_run_rp2040_bootsel_redetects_serial_port() -> None:
     assert result == 0
     mock_wait.assert_called_once_with(known_ports=set())
     # The re-detected serial port is used as the preferred logging device.
+    assert mock_choose.call_args_list[-1].kwargs["default"] == "/dev/ttyACM0"
+    mock_show_logs.assert_called_once_with(CORE.config, args, ["/dev/ttyACM0"])
+
+
+def test_command_run_dfu_redetects_serial_port() -> None:
+    """After a DFU upload, command_run waits for the app's serial port, as after
+    a BOOTSEL upload."""
+    setup_core(config={"logger": {}}, platform=PLATFORM_STM32)
+    args = MockArgs()
+    args.no_logs = False
+    args.device = None
+    new_port = MockSerialPort("/dev/ttyACM0", "CDC ACM serial backend")
+
+    with (
+        patch("esphome.__main__.write_cpp", return_value=0),
+        patch("esphome.__main__.compile_program", return_value=0),
+        patch(
+            "esphome.__main__.choose_upload_log_host",
+            side_effect=[["DFU"], ["/dev/ttyACM0"]],
+        ) as mock_choose,
+        patch("esphome.__main__.upload_program", return_value=(0, None)),
+        patch("esphome.__main__.get_serial_ports", side_effect=[[], [new_port]]),
+        patch("esphome.__main__._wait_for_serial_port") as mock_wait,
+        patch("esphome.__main__.show_logs", return_value=0) as mock_show_logs,
+    ):
+        assert command_run(args, CORE.config) == 0
+
+    mock_wait.assert_called_once_with(known_ports=set())
     assert mock_choose.call_args_list[-1].kwargs["default"] == "/dev/ttyACM0"
     mock_show_logs.assert_called_once_with(CORE.config, args, ["/dev/ttyACM0"])
 

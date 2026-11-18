@@ -99,6 +99,11 @@ _LOGGER = logging.getLogger(__name__)
 # Maximum buffer size for serial log reading to prevent unbounded memory growth
 SERIAL_BUFFER_MAX_SIZE = 65536
 
+# Uploads that flash the device directly, not over the air
+_LOCAL_UPLOAD_PORT_TYPES = (PortType.SERIAL, PortType.BOOTSEL, PortType.DFU)
+# Upload targets that are not a serial port to show logs from
+_NO_LOG_PORT_TYPES = (PortType.BOOTSEL, PortType.DFU)
+
 _RP2040_BOOTSEL_INSTRUCTIONS = (
     "To enter BOOTSEL mode:\n"
     "  1. Unplug the device\n"
@@ -388,6 +393,14 @@ def choose_upload_log_host(
             options.append(("RP2040/RP2350 BOOTSEL (via picotool)", "BOOTSEL"))
         elif bootsel.permission_error:
             bootsel_permission_error = True
+
+    # Platform-specific targets, such as a board waiting in its DFU bootloader
+    if purpose == Purpose.UPLOADING and (
+        upload_options := platform_hooks.get_platform_hook(
+            CORE.target_platform, "upload_options"
+        )
+    ):
+        options.extend(upload_options(CORE.config))
 
     # Annotate the OTA chooser entry only in the non-default case: when the
     # config has web_server OTA but no native API OTA, the upload will fall
@@ -1288,7 +1301,7 @@ def upload_program(
     host = devices[0]
     port_type = get_port_type(host)
     ota_key = getattr(args, "ota_key", None)
-    if ota_key and port_type in (PortType.SERIAL, PortType.BOOTSEL):
+    if ota_key and port_type in _LOCAL_UPLOAD_PORT_TYPES:
         _LOGGER.warning(
             "The presented OTA key only applies to network uploads; ignored for %s",
             host,
@@ -1298,7 +1311,7 @@ def upload_program(
         CORE.target_platform, "upload_program"
     )
     if platform_upload is not None and platform_upload(config, args, host):
-        if ota_key and port_type not in (PortType.SERIAL, PortType.BOOTSEL):
+        if ota_key and port_type not in _LOCAL_UPLOAD_PORT_TYPES:
             # A platform's own network path (nrf52 mcumgr) has no key handshake
             _LOGGER.warning(
                 "The presented OTA key only applies to the %s OTA platform; "
@@ -1306,12 +1319,12 @@ def upload_program(
                 CONF_ESPHOME,
                 host,
             )
-        # BOOTSEL isn't a real serial port -- report None so command_run() waits for
-        # the new port to enumerate instead of trying to use "BOOTSEL" for logging.
-        return 0, None if port_type == PortType.BOOTSEL else host
+        # BOOTSEL and DFU aren't real serial ports -- report None so command_run()
+        # waits for the new port to enumerate instead of logging from "BOOTSEL".
+        return 0, None if port_type in _NO_LOG_PORT_TYPES else host
 
     # MQTT and MQTTIP are also OTA paths; MQTTIP gets resolved to a real IP later by
-    # _resolve_network_devices(). Only SERIAL and BOOTSEL are non-OTA upload paths.
+    # _resolve_network_devices(). Only SERIAL, BOOTSEL and DFU are non-OTA upload paths.
     is_partition_table = getattr(args, "partition_table", False)
     is_bootloader = getattr(args, "bootloader", False)
     if is_partition_table and is_bootloader:
@@ -1319,9 +1332,7 @@ def upload_program(
             "The options --partition-table and --bootloader can't be used together."
         )
     option_string = "--partition-table" if is_partition_table else "--bootloader"
-    if port_type in (PortType.SERIAL, PortType.BOOTSEL) and (
-        is_partition_table or is_bootloader
-    ):
+    if port_type in _LOCAL_UPLOAD_PORT_TYPES and (is_partition_table or is_bootloader):
         raise EsphomeError(
             f"The option {option_string} can only be used for Over The Air updates."
         )
@@ -1344,6 +1355,12 @@ def upload_program(
         # else: Unknown target platform, exit_code remains 1
 
         return exit_code, host if exit_code == 0 else None
+
+    if port_type == PortType.DFU:
+        raise EsphomeError(
+            f"DFU uploads are not supported for the {CORE.target_platform} platform "
+            "or this board."
+        )
 
     requested_platform = getattr(args, "ota_platform", None)
     chosen_platform = _choose_ota_platform(config, requested_platform)
@@ -1869,8 +1886,7 @@ def _read_ota_key(args: ArgsProtocol, config: ConfigType) -> None:
     # be serial: a missing port is skipped and the next entry may be a host
     devices = getattr(args, "device", None) or []
     serial_target = bool(devices) and all(
-        device == "SERIAL"
-        or get_port_type(device) in (PortType.SERIAL, PortType.BOOTSEL)
+        device == "SERIAL" or get_port_type(device) in _LOCAL_UPLOAD_PORT_TYPES
         for device in devices
     )
     chosen = (
@@ -2072,9 +2088,13 @@ def command_run(args: ArgsProtocol, config: ConfigType) -> int | None:
     if args.no_logs:
         return 0
 
-    # After BOOTSEL upload, wait for a new serial port to appear
+    # After a BOOTSEL or DFU upload, wait for a new serial port to appear
     # so it shows up in the log chooser
-    if successful_device is None and (CORE.is_rp2 or _is_zephyr_rpi_pico()):
+    if successful_device is None and (
+        CORE.is_rp2
+        or _is_zephyr_rpi_pico()
+        or get_port_type(devices[0]) == PortType.DFU
+    ):
         _wait_for_serial_port(known_ports=pre_upload_ports)
         # If exactly one new serial port appeared, use it directly
         serial_ports = get_serial_ports()

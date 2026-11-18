@@ -26,6 +26,11 @@ def test_get_port_type_bootsel() -> None:
     assert get_port_type("BOOTSEL") is PortType.BOOTSEL
 
 
+def test_get_port_type_dfu() -> None:
+    """``DFU`` magic string classifies as DFU."""
+    assert get_port_type("DFU") is PortType.DFU
+
+
 def test_get_port_type_mqtt() -> None:
     """``MQTT`` magic string classifies as MQTT."""
     assert get_port_type("MQTT") is PortType.MQTT

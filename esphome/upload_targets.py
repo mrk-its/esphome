@@ -3,7 +3,8 @@
 External tooling (the device-builder dashboard at
 esphome/device-builder, and other consumers) needs to decide whether
 a user-supplied port string names a local serial device, an OTA
-network target, an MQTT magic string, or an RP2040 BOOTSEL upload.
+network target, an MQTT magic string, an RP2040 BOOTSEL upload, or a
+USB DFU bootloader upload.
 
 This module is the single stable home for that classification. The
 upstream CLI (``esphome.__main__``) re-exports ``PortType`` and
@@ -37,6 +38,7 @@ class PortType(StrEnum):
     MQTT = "MQTT"
     MQTTIP = "MQTTIP"
     BOOTSEL = "BOOTSEL"
+    DFU = "DFU"
 
 
 def get_port_type(port: str) -> PortType:
@@ -45,18 +47,22 @@ def get_port_type(port: str) -> PortType:
     Used by device-builder (esphome/device-builder)'s dashboard to
     decide whether a user-supplied ``--device`` value names a local
     serial port (must build / flash locally), an OTA network target
-    (eligible for remote builds), an MQTT magic string, or an RP2040
-    BOOTSEL upload. Please keep the signature stable.
+    (eligible for remote builds), an MQTT magic string, an RP2040
+    BOOTSEL upload, or a USB DFU bootloader upload. Please keep the
+    signature stable.
 
     Returns:
         PortType.SERIAL for serial ports (/dev/ttyUSB0, COM1, etc.)
         PortType.BOOTSEL for RP2040 BOOTSEL upload via picotool
+        PortType.DFU for an upload through a USB DFU bootloader (dfu-util)
         PortType.MQTT for MQTT logging
         PortType.MQTTIP for MQTT IP lookup
         PortType.NETWORK for IP addresses, hostnames, or mDNS names
     """
     if port == "BOOTSEL":
         return PortType.BOOTSEL
+    if port == "DFU":
+        return PortType.DFU
     if port.startswith(("/", "COM")):
         return PortType.SERIAL
     if port == "MQTT":
