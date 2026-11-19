@@ -285,6 +285,7 @@ def test_client_only_codegen(
         assert setter not in main_cpp
     assert "USE_CANOPEN_SDO_CLIENT" in _defines()
     assert "-DCO_CONFIG_SDO_CLI=0x0B" in CORE.build_flags
+    assert "-DCO_CONFIG_SDO_CLI_BUFFER_SIZE=7" in CORE.build_flags
     # no hub with a node id: the node part isn't compiled (nor linked from CANopenNode)
     assert "USE_CANOPEN_NODE" not in _defines()
     # canopen.sdo_read

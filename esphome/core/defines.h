@@ -77,6 +77,7 @@
 // canopen: the CANopenNode configuration codegen sets as build flags (enable_*()) for its optional parts
 #define CO_CONFIG_SDO_CLI 0x0B
 #define CO_CONFIG_FIFO 0x01
+#define CO_CONFIG_SDO_CLI_BUFFER_SIZE 7
 #define CO_CONFIG_SDO_SRV 0x06
 #define CO_CONFIG_SDO_SRV_BUFFER_SIZE 900
 #define CO_CONFIG_SDO_SRV_BLKSIZE 16
