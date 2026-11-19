@@ -128,6 +128,14 @@ def test_sdo_write_value_fits_size(value: int, size: int, valid: bool) -> None:
             SDO_WRITE_SCHEMA(config)
 
 
+@pytest.mark.parametrize("key", ["on_success", "on_error"])
+def test_sdo_write_single_automation(key: str) -> None:
+    """An action's trigger runs one automation: a list of automations is rejected."""
+    automations = [{"then": [{"delay": "1s"}]}, {"then": [{"delay": "2s"}]}]
+    with pytest.raises(cv.Invalid, match="only a single automation"):
+        SDO_WRITE_SCHEMA({**SDO_WRITE, "value": 1, key: automations})
+
+
 def test_sdo_write_size() -> None:
     with pytest.raises(cv.Invalid):
         SDO_WRITE_SCHEMA({**SDO_WRITE, "value": 1, "size": 3})
@@ -197,6 +205,22 @@ def test_local_nodes_same_id(
     CORE.config_path = component_config_path("local_same_id.yaml")
     assert read_config({}) is None
     assert "node_id 16 is also used by canopen" in capsys.readouterr().out
+
+
+def test_client_only_hubs_same_bus(
+    component_config_path: Callable[[str], Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two hubs without node_id on one canbus: their SDO clients would use the same COB-IDs."""
+    CORE.config_path = component_config_path("client_only_same_bus.yaml")
+    assert read_config({}) is None
+    assert "one SDO client only hub per canbus" in capsys.readouterr().out
+
+
+def test_client_only_hub_per_bus(component_config_path: Callable[[str], Path]) -> None:
+    """Nodes and one hub without node_id per canbus are fine."""
+    CORE.config_path = component_config_path("client_only_per_bus.yaml")
+    assert read_config({}) is not None
 
 
 def test_sdo_block_size_differs(

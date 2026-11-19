@@ -86,7 +86,8 @@ TEST(CanopenNode, ForwardsWithNodeIdAndContext) {
     current->calls++;
   };
 
-  // the hub isn't set up: rejected, called back synchronously, with `this` as the default context
+  // the hub failed: rejected, called back synchronously, with `this` as the default context
+  hub.mark_failed();
   EXPECT_FALSE(drive.read_sdo<uint16_t>(0x1017, 0, record));
   EXPECT_EQ(result.calls, 1);
   EXPECT_EQ(result.context, &drive);
@@ -118,6 +119,8 @@ TEST(CanopenNode, FromContextWithOtherBases) {
   static void *seen = nullptr;
   seen = nullptr;
 
+  // rejected by the failed hub: the callback runs right away
+  hub.mark_failed();
   drive.read_sdo<uint16_t>(0x1017, 0, +[](void *context, const SDOReply &) { seen = context; });
   ASSERT_NE(seen, nullptr);
   // the default context is the CANopenNode subobject, not the start of MultiNode
