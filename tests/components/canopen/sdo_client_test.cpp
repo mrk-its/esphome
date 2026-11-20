@@ -1,7 +1,5 @@
 #include <gtest/gtest.h>
 #include <array>
-#include <chrono>
-#include <thread>
 
 #include "fake_canbus.h"
 
@@ -10,9 +8,7 @@ namespace esphome::canopen::testing {
 
 using Bytes = std::vector<uint8_t>;
 
-class SdoClient : public SdoTest {};
-
-TEST_F(SdoClient, ExpeditedRead) {
+TEST_F(SdoTest, ExpeditedRead) {
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6041, 0, on_reply, this));
   this->hub_.loop();
   ASSERT_EQ(this->requests_(), (std::vector<Bytes>{{0x40, 0x41, 0x60, 0, 0, 0, 0, 0}}));
@@ -23,7 +19,7 @@ TEST_F(SdoClient, ExpeditedRead) {
   EXPECT_EQ(this->replies_[0].size, 2);
 }
 
-TEST_F(SdoClient, ReadAnyWidthAndSizeMismatch) {
+TEST_F(SdoTest, ReadAnyWidthAndSizeMismatch) {
   // expected_size 0 accepts the 1-byte value; 4 rejects the 2-byte one
   ASSERT_TRUE(this->hub_.read_sdo(0x21, 0x1001, 0, 0, on_reply, this));
   ASSERT_TRUE(this->hub_.read_sdo(0x21, 0x6041, 0, 4, on_reply, this));
@@ -37,7 +33,7 @@ TEST_F(SdoClient, ReadAnyWidthAndSizeMismatch) {
   EXPECT_EQ(this->replies_[1].result, SDOResult::SDO_RESULT_SIZE_MISMATCH);
 }
 
-TEST_F(SdoClient, ExpeditedWrite) {
+TEST_F(SdoTest, ExpeditedWrite) {
   ASSERT_TRUE(this->hub_.write_sdo<int16_t>(0x21, 0x6040, 0, -2, on_reply, this));
   this->hub_.loop();
   ASSERT_EQ(this->requests_(), (std::vector<Bytes>{{0x2B, 0x40, 0x60, 0, 0xFE, 0xFF, 0, 0}}));
@@ -48,7 +44,7 @@ TEST_F(SdoClient, ExpeditedWrite) {
   EXPECT_EQ(this->replies_[0].size, 2);
 }
 
-TEST_F(SdoClient, SegmentedRead) {
+TEST_F(SdoTest, SegmentedRead) {
   std::array<uint8_t, 32> buffer{};
   ASSERT_TRUE(this->hub_.read_sdo_data(0x21, 0x1008, 0, buffer.data(), buffer.size(), on_reply, this));
   this->hub_.loop();
@@ -68,7 +64,7 @@ TEST_F(SdoClient, SegmentedRead) {
   EXPECT_EQ(req[2][0], 0x70);  // toggle 1
 }
 
-TEST_F(SdoClient, SegmentedWrite) {
+TEST_F(SdoTest, SegmentedWrite) {
   static const uint8_t DATA[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
   ASSERT_TRUE(this->hub_.write_sdo_data(0x21, 0x2000, 1, DATA, sizeof(DATA), on_reply, this));
   this->hub_.loop();
@@ -86,7 +82,7 @@ TEST_F(SdoClient, SegmentedWrite) {
                                }));
 }
 
-TEST_F(SdoClient, ServerAbort) {
+TEST_F(SdoTest, ServerAbort) {
   ASSERT_TRUE(this->hub_.read_sdo<uint32_t>(0x21, 0x1234, 5, on_reply, this));
   this->hub_.loop();
   // object does not exist
@@ -96,10 +92,10 @@ TEST_F(SdoClient, ServerAbort) {
   EXPECT_EQ(this->replies_[0].abort_code, 0x06020000u);
 }
 
-TEST_F(SdoClient, TimeoutSendsAbort) {
+TEST_F(SdoTest, TimeoutSendsAbort) {
   ASSERT_TRUE(this->hub_.read_sdo<uint32_t>(0x21, 0x1000, 0, on_reply, this));
   this->hub_.loop();
-  std::this_thread::sleep_for(std::chrono::milliseconds(40));
+  this->advance_(40);
   this->hub_.loop();
   ASSERT_EQ(this->replies_.size(), 1u);
   EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_TIMEOUT);
@@ -109,7 +105,7 @@ TEST_F(SdoClient, TimeoutSendsAbort) {
   EXPECT_EQ(req[1], (Bytes{0x80, 0x00, 0x10, 0, 0x00, 0x00, 0x04, 0x05}));
 }
 
-TEST_F(SdoClient, QueueRunsInOrder) {
+TEST_F(SdoTest, QueueRunsInOrder) {
   ASSERT_TRUE(this->hub_.read_sdo<uint8_t>(0x21, 0x1001, 0, on_reply, this));
   ASSERT_TRUE(this->hub_.write_sdo<uint8_t>(0x22, 0x6060, 0, 1, on_reply, this));
   this->hub_.loop();
@@ -124,20 +120,43 @@ TEST_F(SdoClient, QueueRunsInOrder) {
   EXPECT_TRUE(this->replies_[1].ok());
 }
 
-TEST_F(SdoClient, Rejected) {
-  // invalid node ids and sizes: the callback runs before the call returns false
-  EXPECT_FALSE(this->hub_.read_sdo<uint8_t>(0, 0x1000, 0, on_reply, this));
-  EXPECT_FALSE(this->hub_.read_sdo<uint8_t>(128, 0x1000, 0, on_reply, this));
-  EXPECT_FALSE(this->hub_.read_sdo(0x21, 0x1000, 0, 3, on_reply, this));
-  EXPECT_FALSE(this->hub_.write_sdo(0x21, 0x1000, 0, 0, 3, on_reply, this));
-  EXPECT_FALSE(this->hub_.write_sdo_data(0x21, 0x1000, 0, nullptr, 0, on_reply, this));
-  ASSERT_EQ(this->replies_.size(), 5u);
-  for (const auto &r : this->replies_)
-    EXPECT_EQ(r.result, SDOResult::SDO_RESULT_REJECTED);
+// Invalid arguments: the callback runs before the call returns false, and nothing goes out.
+TEST_F(SdoTest, InvalidRequestsAreRejected) {
+  static uint8_t buffer[4];
+  static constexpr struct {
+    const char *name;
+    bool (*call)(TestHub &hub, void *context);
+  } CASES[] = {
+      {"node id 0", [](TestHub &hub, void *ctx) { return hub.read_sdo<uint8_t>(0, 0x1000, 0, on_reply, ctx); }},
+      {"node id 128", [](TestHub &hub, void *ctx) { return hub.read_sdo<uint8_t>(128, 0x1000, 0, on_reply, ctx); }},
+      {"read size 3", [](TestHub &hub, void *ctx) { return hub.read_sdo(0x21, 0x1000, 0, 3, on_reply, ctx); }},
+      {"write size 3", [](TestHub &hub, void *ctx) { return hub.write_sdo(0x21, 0x1000, 0, 0, 3, on_reply, ctx); }},
+      {"300 in 1 byte", [](TestHub &hub, void *ctx) { return hub.write_sdo(0x21, 0x6040, 0, 300u, 1, on_reply, ctx); }},
+      {"-129 in 1 byte",
+       [](TestHub &hub, void *ctx) {
+         return hub.write_sdo(0x21, 0x6040, 0, static_cast<uint32_t>(-129), 1, on_reply, ctx);
+       }},
+      {"0x10000 in 2 bytes",
+       [](TestHub &hub, void *ctx) { return hub.write_sdo(0x21, 0x6040, 0, 0x10000u, 2, on_reply, ctx); }},
+      {"write without data",
+       [](TestHub &hub, void *ctx) { return hub.write_sdo_data(0x21, 0x1000, 0, nullptr, 0, on_reply, ctx); }},
+      {"read without a buffer",
+       [](TestHub &hub, void *ctx) { return hub.read_sdo_data(0x21, 0x1008, 0, nullptr, 4, on_reply, ctx); }},
+      {"read with capacity 0",
+       [](TestHub &hub, void *ctx) { return hub.read_sdo_data(0x21, 0x1008, 0, buffer, 0, on_reply, ctx); }},
+  };
+  for (const auto &c : CASES) {
+    SCOPED_TRACE(c.name);
+    this->replies_.clear();
+    EXPECT_FALSE(c.call(this->hub_, this));
+    ASSERT_EQ(this->replies_.size(), 1u);
+    EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_REJECTED);
+  }
+  this->hub_.loop();
   EXPECT_TRUE(this->bus_.sent.empty());
 }
 
-TEST_F(SdoClient, QueueFull) {
+TEST_F(SdoTest, QueueFull) {
   int accepted = 0;
   while (this->hub_.write_sdo<uint8_t>(0x21, 0x2000, 0, 0, on_reply, this))
     accepted++;
@@ -146,7 +165,7 @@ TEST_F(SdoClient, QueueFull) {
   EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_REJECTED);
 }
 
-TEST_F(SdoClient, SignedRawWriteRepliesZeroExtended) {
+TEST_F(SdoTest, SignedRawWriteRepliesZeroExtended) {
   ASSERT_TRUE(this->hub_.write_sdo(0x21, 0x6040, 0, static_cast<uint32_t>(-1), 1, on_reply, this));
   this->hub_.loop();
   ASSERT_EQ(this->requests_(), (std::vector<Bytes>{{0x2F, 0x40, 0x60, 0, 0xFF, 0, 0, 0}}));
@@ -157,7 +176,7 @@ TEST_F(SdoClient, SignedRawWriteRepliesZeroExtended) {
 }
 
 // A value is at most 4 bytes: the upload stops at the first segment that exceeds it.
-TEST_F(SdoClient, LongObjectIsASizeMismatchForAValueRead) {
+TEST_F(SdoTest, LongObjectIsASizeMismatchForAValueRead) {
   ASSERT_TRUE(this->hub_.read_sdo(0x21, 0x1008, 0, 0, on_reply, this));
   this->hub_.loop();
   // initiate response: segmented, 200 bytes
@@ -176,7 +195,7 @@ TEST_F(SdoClient, LongObjectIsASizeMismatchForAValueRead) {
 }
 
 // More than the 7-byte fifo: refilled for every segment.
-TEST_F(SdoClient, SegmentedWriteLargerThanTheFifo) {
+TEST_F(SdoTest, SegmentedWriteLargerThanTheFifo) {
   static const uint8_t DATA[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
   ASSERT_TRUE(this->hub_.write_sdo_data(0x21, 0x2000, 1, DATA, sizeof(DATA), on_reply, this));
   this->hub_.loop();
@@ -196,7 +215,7 @@ TEST_F(SdoClient, SegmentedWriteLargerThanTheFifo) {
 }
 
 // A server may abort with the timeout code: still an abort, not a local timeout.
-TEST_F(SdoClient, ServerAbortWithTheTimeoutCode) {
+TEST_F(SdoTest, ServerAbortWithTheTimeoutCode) {
   ASSERT_TRUE(this->hub_.read_sdo<uint32_t>(0x21, 0x1000, 0, on_reply, this));
   this->hub_.loop();
   this->hub_.frame(0x5A1, {0x80, 0x00, 0x10, 0, 0x00, 0x00, 0x04, 0x05});
@@ -206,10 +225,10 @@ TEST_F(SdoClient, ServerAbortWithTheTimeoutCode) {
 }
 
 // After a long loop, a frame received before the reply still queued behind it must not time the request out.
-TEST_F(SdoClient, OtherFrameAfterTheTimeoutBeforeTheReply) {
+TEST_F(SdoTest, OtherFrameAfterTheTimeoutBeforeTheReply) {
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x1017, 0, on_reply, this));
   this->hub_.loop();
-  std::this_thread::sleep_for(std::chrono::milliseconds(40));
+  this->advance_(40);
   this->hub_.frame(0x701, {0x05});  // a heartbeat
   EXPECT_TRUE(this->replies_.empty());
   this->hub_.frame(0x5A1, {0x4B, 0x17, 0x10, 0, 0xE8, 0x03, 0, 0});
@@ -218,12 +237,33 @@ TEST_F(SdoClient, OtherFrameAfterTheTimeoutBeforeTheReply) {
   EXPECT_EQ(this->replies_[0].value, 1000u);
 }
 
+// A reply starts the next exchange: the time spent waiting for it isn't charged to the next segment.
+TEST_F(SdoTest, DelayedSegmentDoesNotShortenTheNextOne) {
+  std::array<uint8_t, 16> buffer{};
+  ASSERT_TRUE(this->hub_.read_sdo_data(0x21, 0x1008, 0, buffer.data(), buffer.size(), on_reply, this));
+  this->hub_.loop();
+  this->advance_(15);
+  this->hub_.frame(0x5A1, {0x41, 0x08, 0x10, 0, 10, 0, 0, 0});
+  // 25 ms since the last loop, 10 ms since the segment request (timeout 20 ms)
+  this->advance_(10);
+  this->hub_.loop();
+  EXPECT_TRUE(this->replies_.empty());
+  this->advance_(5);
+  this->hub_.frame(0x5A1, {0x00, 'c', 'a', 'n', 'o', 'p', 'e', 'n'});
+  this->advance_(15);
+  this->hub_.loop();
+  this->hub_.frame(0x5A1, {0x10 | (4 << 1) | 1, ' ', 'i', 'o', 0, 0, 0, 0});
+  ASSERT_EQ(this->replies_.size(), 1u);
+  EXPECT_TRUE(this->replies_[0].ok());
+  EXPECT_EQ(this->data_, "canopen io");
+}
+
 // After a timeout, the server's late replies about the old object must not end the next request.
-TEST_F(SdoClient, LateRepliesForAnotherObjectAreIgnored) {
+TEST_F(SdoTest, LateRepliesForAnotherObjectAreIgnored) {
   ASSERT_TRUE(this->hub_.read_sdo<uint32_t>(0x21, 0x1000, 0, on_reply, this));
   ASSERT_TRUE(this->hub_.write_sdo<uint8_t>(0x21, 0x6060, 0, 1, on_reply, this));
   this->hub_.loop();
-  std::this_thread::sleep_for(std::chrono::milliseconds(40));
+  this->advance_(40);
   this->hub_.loop();
   ASSERT_EQ(this->replies_.size(), 1u);
   EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_TIMEOUT);
@@ -243,8 +283,7 @@ TEST_F(SdoClient, LateRepliesForAnotherObjectAreIgnored) {
 // e.g. from on_boot, which runs before the hub's setup()
 TEST(CanopenSdoClient, RequestBeforeSetupWaitsForIt) {
   FakeCanbus bus;
-  TestHub hub{CANopenComponent::NO_NODE_ID};
-  hub.set_canbus(&bus);
+  TestHub hub(&bus, CANopenComponent::NO_NODE_ID);
   std::vector<SDOReply> replies;
   auto on_reply = [](void *context, const SDOReply &reply) {
     static_cast<std::vector<SDOReply> *>(context)->push_back(reply);

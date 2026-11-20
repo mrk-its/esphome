@@ -1,6 +1,4 @@
 #include <gtest/gtest.h>
-#include <chrono>
-#include <thread>
 
 #include "fake_canbus.h"
 
@@ -9,11 +7,10 @@ namespace esphome::canopen::testing {
 class SdoCancellation : public ::testing::TestWithParam<bool> {
  protected:
   FakeCanbus bus_;
-  TestHub hub_;
+  TestHub hub_{&this->bus_};
   int callbacks_{0};
 
   void SetUp() override {
-    this->hub_.set_canbus(&this->bus_);
     this->hub_.setup();
     ASSERT_FALSE(this->hub_.is_failed());
     this->hub_.loop();  // Send the boot-up heartbeat before blocking the bus.
@@ -101,12 +98,12 @@ TEST_P(SdoCancellation, AbortGuardStartsAfterRecoveryWithoutIntermediateLoops) {
   this->hub_.cancel_sdo(&this->callbacks_);
   int other_callbacks = 0;
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6041, 0, on_result, &other_callbacks));
-  std::this_thread::sleep_for(std::chrono::milliseconds(80));
+  advance_loop_clock(80);
   this->bus_.busy = false;
   this->hub_.loop();
   ASSERT_EQ(this->bus_.count(0x621), 1u);
   EXPECT_EQ(this->bus_.find(0x621)->data[0], 0x80);
-  std::this_thread::sleep_for(std::chrono::milliseconds(80));
+  advance_loop_clock(80);
   this->hub_.loop();
   EXPECT_EQ(this->bus_.count(0x621), 2u);
 }
@@ -116,14 +113,14 @@ TEST_P(SdoCancellation, AbortGuardSurvivesRecoveryWithEmptyQueue) {
   this->queue_request_();
   this->hub_.loop();
   this->hub_.cancel_sdo(&this->callbacks_);
-  std::this_thread::sleep_for(std::chrono::milliseconds(80));
+  advance_loop_clock(80);
   this->bus_.busy = false;
   this->hub_.loop();
   int other_callbacks = 0;
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6041, 0, on_result, &other_callbacks));
   this->hub_.loop();
   EXPECT_EQ(this->bus_.count(0x621), 1u);
-  std::this_thread::sleep_for(std::chrono::milliseconds(80));
+  advance_loop_clock(80);
   this->hub_.loop();
   EXPECT_EQ(this->bus_.count(0x621), 2u);
 }

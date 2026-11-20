@@ -13,11 +13,9 @@ namespace esphome::canopen::testing {
 // a hub without node id (SDO client only) and a node on one canbus, linked as codegen does
 struct ClientOnly : ::testing::Test {
   FakeCanbus bus;
-  TestHub client{CANopenComponent::NO_NODE_ID};
-  TestHub node{0x10};
+  TestHub client{&this->bus, CANopenComponent::NO_NODE_ID};
+  TestHub node{&this->bus, 0x10};
   void SetUp() override {
-    client.set_canbus(&bus);
-    node.set_canbus(&bus);
     client.set_next_local(&node);
     node.set_next_local(&client);
   }
@@ -101,7 +99,7 @@ TEST_F(ClientOnly, RequestToAnAbsentNodeTimesOut) {
   ASSERT_TRUE(client.read_sdo<uint32_t>(0x20, 0x1018, 1, Result::on_reply, &result));
   for (int i = 0; i < 100 && result.done == 0; i++) {
     client.loop();
-    delay(1);
+    advance_loop_clock(1);
   }
   ASSERT_EQ(result.done, 1);
   EXPECT_EQ(result.reply.result, SDOResult::SDO_RESULT_TIMEOUT);

@@ -11,11 +11,9 @@ namespace esphome::canopen::testing {
 // two nodes on one canbus, linked as codegen does: each receives what the other sends (the bus doesn't echo it)
 struct LocalPair : ::testing::Test {
   FakeCanbus bus;
-  TestHub a{0x10};
-  TestHub b{0x11};
+  TestHub a{&this->bus, 0x10};
+  TestHub b{&this->bus, 0x11};
   void SetUp() override {
-    a.set_canbus(&bus);
-    b.set_canbus(&bus);
     a.set_next_local(&b);
     b.set_next_local(&a);
   }
@@ -161,8 +159,7 @@ TEST_F(LocalPair, QueuedFrameDeliveredWhenSent) {
 
 TEST(CanopenLocal, NoOtherNodes) {
   FakeCanbus bus;
-  TestHub a;
-  a.set_canbus(&bus);
+  TestHub a(&bus);
   // a ring of one (or none): the node doesn't receive its own frames
   a.set_next_local(&a);
   Frames on_a;

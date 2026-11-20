@@ -11,4 +11,5 @@ ota:
     canopen_id: canopen_node
     reboot: false
 
-<<: !include common.yaml
+packages:
+  canopen: !include common.yaml

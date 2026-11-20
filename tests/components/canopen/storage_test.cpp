@@ -20,11 +20,10 @@ static constexpr uint32_t LOAD = 0x64616F6C;  // "load"
 // One boot of a node with one RPDO (default COB-ID cob_id): a new instance is a reboot with the same preferences.
 struct Node {
   FakeCanbus bus;
-  TestHub hub;
+  TestHub hub{&this->bus};
   uint32_t command{0};
 
   explicit Node(uint32_t cob_id = 0x1B2) {
-    this->hub.set_canbus(&this->bus);
     auto &od = this->hub.get_od();
     od.add_var(0x2012, OD_READ_WRITE | OD_RPDO, &this->command, 4);
     this->hub.configure_rpdo(0, cob_id, {{0x2012, 0, 32}});

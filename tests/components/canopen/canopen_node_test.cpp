@@ -10,7 +10,7 @@ namespace esphome::canopen::testing {
 // the hub's event sources are protected: raise them as CANopenNode's heartbeat consumer / frame callbacks do
 class TestHub : public CANopenComponent {
  public:
-  TestHub() : CANopenComponent(0x10) {}
+  TestHub() : CANopenComponent(nullptr, 0x10) {}
   void node_event(uint8_t node_id, NodeEvent event, NMTState state) { this->node_event_(node_id, event, state); }
   void emcy(uint8_t node_id, const Emergency &emergency) { this->emcy_callback_.call(node_id, emergency); }
 };

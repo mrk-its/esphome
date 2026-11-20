@@ -22,7 +22,7 @@ def test_codegen(
     """Heartbeat clients become monitor_node() calls, triggers become callbacks."""
     main_cpp = generate_main(component_config_path("canopen.yaml"))
 
-    assert "canopen::CANopenComponent(16)" in main_cpp
+    assert "canopen::CANopenComponent(can_bus, 16)" in main_cpp
     assert "canopen_node->set_heartbeat_interval(2000);" in main_cpp
     assert "canopen_node->monitor_node(1, 3000);" in main_cpp
     assert "canopen_node->monitor_node(2, 500);" in main_cpp
@@ -40,9 +40,9 @@ def test_codegen(
     assert 'canopen_node->set_hardware_version("rev B");' in main_cpp
     assert "set_device_name(" not in main_cpp
     assert "set_software_version(" not in main_cpp
-    # sdo_write: negative values are sent as two's complement in `size` bytes
+    # sdo_write: a negative value is passed as is, write_sdo() masks it to `size` bytes
     assert "canopen::SDOWriteAction<>" in main_cpp
-    assert "set_value([]() -> uint32_t {\n    return 65535;\n});" in main_cpp
+    assert "set_value([]() -> uint32_t {\n    return -1;\n});" in main_cpp
     assert "set_size(2);" in main_cpp
     # SDO block transfer: the CANopenNode configuration and the define for dump_config()
     assert "-DCO_CONFIG_SDO_SRV=0x06" in CORE.build_flags
@@ -274,7 +274,7 @@ def test_client_only_codegen(
 ) -> None:
     """Without node_id the hub is an SDO client only: no node setters, the client compiled in."""
     main_cpp = generate_main(component_config_path("client_only.yaml"))
-    assert "canopen::CANopenComponent(0)" in main_cpp
+    assert "canopen::CANopenComponent(can_bus, 0)" in main_cpp
     assert "canopen_client->set_response_timeout(200);" in main_cpp
     assert "canopen_client->add_on_heartbeat_callback(" in main_cpp
     for setter in (

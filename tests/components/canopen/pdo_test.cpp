@@ -18,8 +18,7 @@ struct Value : OdObject {
 
 TEST(CanopenPdo, TpdoAndRpdo) {
   FakeCanbus bus;
-  TestHub hub;
-  hub.set_canbus(&bus);
+  TestHub hub(&bus);
   Value state, command;
   state.value = 0x11223344;
   auto &od = hub.get_od();
@@ -88,8 +87,7 @@ TEST(CanopenPdo, TpdoAndRpdo) {
 
 TEST(CanopenPdo, NotOperational) {
   FakeCanbus bus;
-  TestHub hub;
-  hub.set_canbus(&bus);
+  TestHub hub(&bus);
   hub.set_start_operational(false);
   uint32_t value = 1;
   hub.get_od().add_var(0x2011, OD_READ | OD_TPDO, &value, 4);
@@ -106,7 +104,8 @@ TEST(CanopenPdo, NotOperational) {
 }
 
 TEST(CanopenPdo, InvalidConfiguration) {
-  TestHub hub;
+  FakeCanbus bus;
+  TestHub hub(&bus);
   EXPECT_FALSE(hub.configure_tpdo(CANopenComponent::MAX_PDO, 0x190, {}));
   EXPECT_FALSE(hub.configure_tpdo(0, 0x190, {{0x2011, 0, 12}}));                   // not whole bytes
   EXPECT_FALSE(hub.configure_tpdo(0, 0x190, {{0x2011, 0, 32}, {0x2012, 0, 40}}));  // more than 8 bytes

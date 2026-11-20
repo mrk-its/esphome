@@ -2,15 +2,20 @@
 
 #include <gtest/gtest.h>
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
+#include <deque>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "esphome/components/canopen/canopen.h"
+#include "esphome/core/application.h"
 
 namespace esphome::canopen::testing {
+
+// moves the loop clock (App.get_loop_component_start_time()) forward, which the SDO client reads
+inline void advance_loop_clock(uint32_t ms) {
+  LoopBlockingGuard clock{nullptr, nullptr, App.get_loop_component_start_time() + ms};
+}
 
 // records the frames the hub sends
 class FakeCanbus : public canbus::Canbus {
@@ -22,6 +27,16 @@ class FakeCanbus : public canbus::Canbus {
   std::vector<Frame> sent;
   // the platform refuses frames (TX buffers full)
   bool busy{false};
+  // frames waiting in the controller, handed out by loop()
+  std::deque<canbus::CanFrame> rx;
+
+  void queue(uint32_t can_id, const std::vector<uint8_t> &data) {
+    canbus::CanFrame f{};
+    f.can_id = can_id;
+    f.can_data_length_code = data.size();
+    std::copy(data.begin(), data.end(), f.data);
+    this->rx.push_back(f);
+  }
 
   size_t count(uint32_t can_id) const {
     size_t n = 0;
@@ -45,12 +60,18 @@ class FakeCanbus : public canbus::Canbus {
     this->sent.push_back({frame->can_id, {frame->data, frame->data + frame->can_data_length_code}});
     return canbus::ERROR_OK;
   }
-  canbus::Error read_message(canbus::CanFrame *frame) override { return canbus::ERROR_NOMSG; }
+  canbus::Error read_message(canbus::CanFrame *frame) override {
+    if (this->rx.empty())
+      return canbus::ERROR_NOMSG;
+    *frame = this->rx.front();
+    this->rx.pop_front();
+    return canbus::ERROR_OK;
+  }
 };
 
 class TestHub : public CANopenComponent {
  public:
-  explicit TestHub(uint8_t node_id = 0x10) : CANopenComponent(node_id) {}
+  explicit TestHub(canbus::Canbus *canbus, uint8_t node_id = 0x10) : CANopenComponent(canbus, node_id) {}
   // a received frame, as the canbus callback delivers it (processed right away)
   void frame(uint32_t can_id, const std::vector<uint8_t> &data) {
     canbus::CanFrame f{};
@@ -67,12 +88,11 @@ class TestHub : public CANopenComponent {
 class SdoTest : public ::testing::Test {
  protected:
   FakeCanbus bus_;
-  TestHub hub_{CANopenComponent::NO_NODE_ID};
+  TestHub hub_{&this->bus_, CANopenComponent::NO_NODE_ID};
   std::vector<SDOReply> replies_;
   std::string data_;  // READ_DATA: the buffer, copied during the callback
 
   void SetUp() override {
-    this->hub_.set_canbus(&this->bus_);
     this->hub_.set_response_timeout(20);
     this->hub_.setup();
     ASSERT_FALSE(this->hub_.is_failed());
@@ -95,11 +115,14 @@ class SdoTest : public ::testing::Test {
     return out;
   }
 
+  // moves the loop clock the hub reads forward
+  static void advance_(uint32_t ms) { advance_loop_clock(ms); }
+
   // long enough for the response timeout to end a transfer
   void wait_for_timeout_() {
     for (int i = 0; i < 60; i++) {
       this->hub_.loop();
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      this->advance_(1);
     }
   }
 };

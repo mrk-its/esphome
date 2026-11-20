@@ -5,6 +5,7 @@ substitutions:
 
 packages:
   spi: !include ../../test_build_components/common/spi/esp8266-ard.yaml
+  canopen: !include common.yaml
 
 canbus:
   - platform: mcp2515
@@ -16,5 +17,3 @@ canbus:
 ota:
   - platform: canopen
     canopen_id: canopen_node
-
-<<: !include common.yaml

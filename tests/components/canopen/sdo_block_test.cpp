@@ -104,8 +104,7 @@ class BlockClient {
 
 TEST(CanopenSdoBlock, Download) {
   FakeCanbus bus;
-  TestHub hub;
-  hub.set_canbus(&bus);
+  TestHub hub(&bus);
   Domain image;
   hub.get_od().add_var(0x3000, OD_WRITE, nullptr, 0);
   hub.get_od().set_object(0x3000, &image);
@@ -133,8 +132,7 @@ TEST(CanopenSdoBlock, Download) {
 
 TEST(CanopenSdoBlock, WrongCrcAborts) {
   FakeCanbus bus;
-  TestHub hub;
-  hub.set_canbus(&bus);
+  TestHub hub(&bus);
   Domain image;
   hub.get_od().add_var(0x3000, OD_WRITE, nullptr, 0);
   hub.get_od().set_object(0x3000, &image);
@@ -232,8 +230,7 @@ static std::vector<uint8_t> block_upload(BlockClient &client, uint16_t index, ui
 TEST(CanopenSdoBlock, UploadConsumedDomain) {
   for (size_t size : {100, 500, 1500, 2048}) {
     FakeCanbus bus;
-    TestHub hub;
-    hub.set_canbus(&bus);
+    TestHub hub(&bus);
     Source src;
     for (size_t i = 0; i < size; i++)
       src.data.push_back(uint8_t(i * 7 + 3));

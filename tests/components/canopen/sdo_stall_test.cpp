@@ -1,7 +1,5 @@
 #include <gtest/gtest.h>
 #include <array>
-#include <chrono>
-#include <thread>
 #include <vector>
 
 #include "fake_canbus.h"
@@ -9,9 +7,7 @@
 // The SDO client when the bus refuses frames, and requests it must not send as they are.
 namespace esphome::canopen::testing {
 
-class SdoStall : public SdoTest {};
-
-TEST_F(SdoStall, UnsentWriteEndsAndIsNeverSent) {
+TEST_F(SdoTest, UnsentWriteEndsAndIsNeverSent) {
   this->bus_.busy = true;
   ASSERT_TRUE(this->hub_.write_sdo<uint16_t>(0x21, 0x6040, 0, 0x1234, on_reply, this));
   this->wait_for_timeout_();
@@ -26,11 +22,29 @@ TEST_F(SdoStall, UnsentWriteEndsAndIsNeverSent) {
 
 // The bus takes frames again right at the deadline: the request ends unsent instead of reaching the server just
 // before the caller is told it failed.
-TEST_F(SdoStall, FrameUnsentAtTheDeadlineIsNotSentLate) {
+TEST_F(SdoTest, FrameUnsentAtTheDeadlineIsNotSentLate) {
   this->bus_.busy = true;
   ASSERT_TRUE(this->hub_.write_sdo<uint16_t>(0x21, 0x6040, 0, 0x1234, on_reply, this));
   this->hub_.loop();
-  std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  this->advance_(25);
+  this->bus_.busy = false;
+  this->hub_.loop();
+  ASSERT_EQ(this->replies_.size(), 1u);
+  EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_TRANSPORT_ERROR);
+  EXPECT_EQ(this->bus_.count(0x621), 0u);
+}
+
+// No reply can wait behind a capped receive pass for a frame that never went out: its deadline still applies.
+TEST_F(SdoTest, UnsentFrameEndsAtTheDeadlineDuringACappedPass) {
+  this->bus_.set_max_frames_per_loop(1);
+  this->bus_.busy = true;
+  ASSERT_TRUE(this->hub_.write_sdo<uint16_t>(0x21, 0x6040, 0, 0x1234, on_reply, this));
+  this->hub_.loop();
+  this->bus_.queue(0x181, {0});
+  this->bus_.queue(0x181, {1});
+  this->advance_(25);
+  this->bus_.loop();
+  ASSERT_TRUE(this->bus_.rx_capped());
   this->bus_.busy = false;
   this->hub_.loop();
   ASSERT_EQ(this->replies_.size(), 1u);
@@ -39,16 +53,16 @@ TEST_F(SdoStall, FrameUnsentAtTheDeadlineIsNotSentLate) {
 }
 
 // The bus takes the frame before the deadline: sent, and the response timeout starts again from there.
-TEST_F(SdoStall, RetryBeforeTheDeadlineRestartsTheTimeout) {
+TEST_F(SdoTest, RetryBeforeTheDeadlineRestartsTheTimeout) {
   this->bus_.busy = true;
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6041, 0, on_reply, this));
   this->hub_.loop();
-  std::this_thread::sleep_for(std::chrono::milliseconds(15));
+  this->advance_(15);
   this->bus_.busy = false;
   this->hub_.loop();
   ASSERT_EQ(this->requests_(), (std::vector<std::vector<uint8_t>>{{0x40, 0x41, 0x60, 0, 0, 0, 0, 0}}));
   // 25 ms since the request, 10 ms since it was sent (timeout 20 ms)
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  this->advance_(10);
   this->hub_.loop();
   EXPECT_TRUE(this->replies_.empty());
   this->hub_.frame(0x5A1, {0x4B, 0x41, 0x60, 0, 0x37, 0x02, 0, 0});
@@ -57,8 +71,20 @@ TEST_F(SdoStall, RetryBeforeTheDeadlineRestartsTheTimeout) {
   EXPECT_EQ(this->replies_[0].value, 0x0237u);
 }
 
+// Queued frames go out from loop(), not for every received frame: on ESP32 each refused send can block.
+TEST_F(SdoTest, ReceivedFrameDoesNotSendQueuedFrames) {
+  this->bus_.busy = true;
+  ASSERT_TRUE(this->hub_.write_sdo<uint8_t>(0x21, 0x6060, 0, 1, on_reply, this));
+  this->hub_.loop();
+  this->bus_.busy = false;
+  this->hub_.frame(0x701, {0x05});
+  EXPECT_EQ(this->bus_.count(0x621), 0u);
+  this->hub_.loop();
+  EXPECT_EQ(this->bus_.count(0x621), 1u);
+}
+
 // A reply can't be for a request that hasn't gone out: e.g. a late one to an earlier write of the same object.
-TEST_F(SdoStall, ReplyWhileTheRequestIsUnsentIsIgnored) {
+TEST_F(SdoTest, ReplyWhileTheRequestIsUnsentIsIgnored) {
   this->bus_.busy = true;
   ASSERT_TRUE(this->hub_.write_sdo<uint8_t>(0x21, 0x6060, 0, 1, on_reply, this));
   this->hub_.loop();
@@ -72,7 +98,7 @@ TEST_F(SdoStall, ReplyWhileTheRequestIsUnsentIsIgnored) {
   EXPECT_TRUE(this->replies_[0].ok());
 }
 
-TEST_F(SdoStall, UnsentReadEnds) {
+TEST_F(SdoTest, UnsentReadEnds) {
   this->bus_.busy = true;
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6041, 0, on_reply, this));
   this->wait_for_timeout_();
@@ -80,7 +106,7 @@ TEST_F(SdoStall, UnsentReadEnds) {
   EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_TRANSPORT_ERROR);
 }
 
-TEST_F(SdoStall, QueueBehindAStalledRequestMovesOn) {
+TEST_F(SdoTest, QueueBehindAStalledRequestMovesOn) {
   this->bus_.busy = true;
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6041, 0, on_reply, this));
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6042, 0, on_reply, this));
@@ -91,7 +117,7 @@ TEST_F(SdoStall, QueueBehindAStalledRequestMovesOn) {
 }
 
 // The request went out, then the bus stalled: the abort after the timeout can't be sent.
-TEST_F(SdoStall, UnsentAbortIsDroppedAndNextFrameGoesOutDirectly) {
+TEST_F(SdoTest, UnsentAbortIsDroppedAndNextFrameGoesOutDirectly) {
   ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6041, 0, on_reply, this));
   this->hub_.loop();
   ASSERT_EQ(this->bus_.count(0x621), 1u);
@@ -110,18 +136,7 @@ TEST_F(SdoStall, UnsentAbortIsDroppedAndNextFrameGoesOutDirectly) {
   EXPECT_EQ(this->bus_.count(0x621), 2u);
 }
 
-TEST_F(SdoStall, ValueThatDoesNotFitIsRejected) {
-  EXPECT_FALSE(this->hub_.write_sdo(0x21, 0x6040, 0, 300u, 1, on_reply, this));
-  EXPECT_FALSE(this->hub_.write_sdo(0x21, 0x6040, 0, static_cast<uint32_t>(-129), 1, on_reply, this));
-  EXPECT_FALSE(this->hub_.write_sdo(0x21, 0x6040, 0, 0x10000u, 2, on_reply, this));
-  ASSERT_EQ(this->replies_.size(), 3u);
-  for (const auto &reply : this->replies_)
-    EXPECT_EQ(reply.result, SDOResult::SDO_RESULT_REJECTED);
-  this->hub_.loop();
-  EXPECT_EQ(this->bus_.count(0x621), 0u);
-}
-
-TEST_F(SdoStall, ValueAtTheLimitsIsSent) {
+TEST_F(SdoTest, ValueAtTheLimitsIsSent) {
   EXPECT_TRUE(this->hub_.write_sdo(0x21, 0x6040, 0, 255u, 1));
   EXPECT_TRUE(this->hub_.write_sdo(0x21, 0x6040, 0, static_cast<uint32_t>(-128), 1));
   EXPECT_TRUE(this->hub_.write_sdo(0x21, 0x6040, 0, 0xFFFFu, 2));
@@ -131,7 +146,7 @@ TEST_F(SdoStall, ValueAtTheLimitsIsSent) {
 
 #ifdef USE_CANBUS_FD
 // CANopen is classic CAN: an FD frame on the reply id isn't a reply, even with 8 bytes
-TEST_F(SdoStall, FdFrameOnTheReplyIdIsIgnored) {
+TEST_F(SdoTest, FdFrameOnTheReplyIdIsIgnored) {
   ASSERT_TRUE(this->hub_.read_sdo<uint32_t>(0x21, 0x1000, 0, on_reply, this));
   this->hub_.loop();
   canbus::CanFrame frame{};
@@ -145,7 +160,7 @@ TEST_F(SdoStall, FdFrameOnTheReplyIdIsIgnored) {
 }
 #endif
 
-TEST_F(SdoStall, ReadFillsTheCallersBuffer) {
+TEST_F(SdoTest, ReadFillsTheCallersBuffer) {
   std::array<uint8_t, 4> buffer{};
   ASSERT_TRUE(this->hub_.read_sdo_data(0x21, 0x1008, 0, buffer.data(), buffer.size(), on_reply, this));
   this->hub_.loop();
@@ -157,7 +172,7 @@ TEST_F(SdoStall, ReadFillsTheCallersBuffer) {
   EXPECT_EQ(buffer, (std::array<uint8_t, 4>{'a', 'b', 'c', 'd'}));
 }
 
-TEST_F(SdoStall, ReadOverTheCapacityIsAbortedAndStaysInTheBuffer) {
+TEST_F(SdoTest, ReadOverTheCapacityIsAbortedAndStaysInTheBuffer) {
   // the guard bytes must survive: the object doesn't fit in the first 8
   std::array<uint8_t, 12> buffer{};
   buffer.fill(0xEE);
@@ -176,7 +191,7 @@ TEST_F(SdoStall, ReadOverTheCapacityIsAbortedAndStaysInTheBuffer) {
 }
 
 // The whole object arrives at once: the transfer is over, so no abort frame goes out, but the caller gets the reason.
-TEST_F(SdoStall, ReadOverTheCapacityInTheLastSegment) {
+TEST_F(SdoTest, ReadOverTheCapacityInTheLastSegment) {
   std::array<uint8_t, 4> buffer{};
   ASSERT_TRUE(this->hub_.read_sdo_data(0x21, 0x1008, 0, buffer.data(), buffer.size(), on_reply, this));
   this->hub_.loop();
@@ -191,7 +206,7 @@ TEST_F(SdoStall, ReadOverTheCapacityInTheLastSegment) {
     EXPECT_NE(frame.data[0], 0x80);
 }
 
-TEST_F(SdoStall, ExpeditedReadOverTheCapacity) {
+TEST_F(SdoTest, ExpeditedReadOverTheCapacity) {
   std::array<uint8_t, 2> buffer{};
   ASSERT_TRUE(this->hub_.read_sdo_data(0x21, 0x1000, 0, buffer.data(), buffer.size(), on_reply, this));
   this->hub_.loop();
@@ -202,13 +217,45 @@ TEST_F(SdoStall, ExpeditedReadOverTheCapacity) {
   EXPECT_EQ(this->replies_[0].abort_code, static_cast<uint32_t>(CO_SDO_AB_OUT_OF_MEM));
 }
 
-TEST_F(SdoStall, ReadWithoutABufferIsRejected) {
-  std::array<uint8_t, 4> buffer{};
-  EXPECT_FALSE(this->hub_.read_sdo_data(0x21, 0x1008, 0, nullptr, 4, on_reply, this));
-  EXPECT_FALSE(this->hub_.read_sdo_data(0x21, 0x1008, 0, buffer.data(), 0, on_reply, this));
-  ASSERT_EQ(this->replies_.size(), 2u);
-  EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_REJECTED);
-  EXPECT_EQ(this->replies_[1].result, SDOResult::SDO_RESULT_REJECTED);
+// A reply still queued behind a burst the canbus loop stopped at its cap must not time the request out.
+TEST_F(SdoTest, ReplyBehindACappedBurstDoesNotTimeOut) {
+  this->bus_.set_max_frames_per_loop(4);
+  ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x1017, 0, on_reply, this));
+  this->hub_.loop();
+  for (uint8_t i = 0; i < 6; i++)
+    this->bus_.queue(0x181, {i});  // PDOs
+  this->bus_.queue(0x5A1, {0x4B, 0x17, 0x10, 0, 0xE8, 0x03, 0, 0});
+  this->advance_(25);  // past the 20 ms response timeout
+  this->bus_.loop();
+  ASSERT_TRUE(this->bus_.rx_capped());
+  this->hub_.loop();
+  EXPECT_TRUE(this->replies_.empty());
+  this->bus_.loop();
+  EXPECT_FALSE(this->bus_.rx_capped());
+  ASSERT_EQ(this->replies_.size(), 1u);
+  EXPECT_TRUE(this->replies_[0].ok());
+  EXPECT_EQ(this->replies_[0].value, 1000u);
+}
+
+// On a bus that never drains, the time is held at most one response timeout past the deadline.
+TEST_F(SdoTest, SaturatedBusStillTimesOut) {
+  this->bus_.set_max_frames_per_loop(1);
+  ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x1017, 0, on_reply, this));
+  this->hub_.loop();
+  this->advance_(15);
+  this->hub_.loop();  // nothing received: 15 ms charged
+  uint32_t waited = 15;
+  while (this->replies_.empty() && waited < 100) {
+    this->bus_.queue(0x181, {0});
+    this->bus_.queue(0x181, {1});
+    this->advance_(1);
+    waited++;
+    this->bus_.loop();
+    this->hub_.loop();
+  }
+  ASSERT_EQ(this->replies_.size(), 1u);
+  EXPECT_EQ(this->replies_[0].result, SDOResult::SDO_RESULT_TIMEOUT);
+  EXPECT_EQ(waited, 40u);
 }
 
 }  // namespace esphome::canopen::testing

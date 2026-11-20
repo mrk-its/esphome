@@ -61,7 +61,6 @@ using Ota = ProgramDownload;
 class ProgramDownloadTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    this->hub_.set_canbus(&this->bus_);
     this->ota_.set_canopen(&this->hub_);
     this->hub_.setup();
     this->ota_.setup();
@@ -103,7 +102,7 @@ class ProgramDownloadTest : public ::testing::Test {
   }
 
   FakeCanbus bus_;
-  TestHub hub_;
+  TestHub hub_{&this->bus_};
   TestOta ota_;
   const std::vector<uint8_t> image_{'1', '2', '3', '4', '5', '6', '7', '8', '9'};
 };

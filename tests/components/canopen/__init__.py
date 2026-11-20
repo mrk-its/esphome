@@ -16,8 +16,6 @@ def override_manifest(manifest: ComponentManifestOverride) -> None:
         add_canopennode_library()
         # the tests run nodes (and client-only hubs)
         cg.add_define("USE_CANOPEN_NODE")
-        # CAN FD frames, which the hub ignores (sdo_stall_test.cpp)
-        cg.add_define("USE_CANBUS_FD")
         enable_sdo_client()
         enable_nmt_master()
         enable_pdo()
