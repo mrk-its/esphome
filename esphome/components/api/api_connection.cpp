@@ -15,6 +15,7 @@
 #endif
 #include <cerrno>
 #include <cinttypes>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <new>
@@ -1463,7 +1464,7 @@ bool APIConnection::send_sendspin_pairing_token_response_() {
   auto token = sendspin_::global_sendspin_hub->get_pairing_token();
   if (token.has_value()) {
     resp.status = enums::SENDSPIN_PAIRING_TOKEN_STATUS_OK;
-    resp.token = StringRef(*token);
+    resp.token = StringRef(token->data(), token->size());
   } else if (sendspin_::global_sendspin_hub->status_has_error()) {
     resp.status = enums::SENDSPIN_PAIRING_TOKEN_STATUS_FAILED;
   } else if (sendspin_::global_sendspin_hub->is_disabled()) {
@@ -2243,7 +2244,9 @@ void APIConnection::on_home_assistant_state_response(const HomeAssistantStateRes
   }
 
   for (auto &it : this->parent_->get_state_subs()) {
-    if (msg.entity_id != it.entity_id) {
+    // The stored length rejects most entries without reading the entity id
+    if (msg.entity_id.size() != it.entity_id_len ||
+        memcmp(msg.entity_id.c_str(), it.entity_id, it.entity_id_len) != 0) {
       continue;
     }
 
