@@ -125,6 +125,43 @@ TEST_P(SdoCancellation, AbortGuardSurvivesRecoveryWithEmptyQueue) {
   EXPECT_EQ(this->bus_.count(0x621), 2u);
 }
 
+TEST_P(SdoCancellation, AbortRefusedForTheResponseTimeoutIsDropped) {
+  this->bus_.busy = true;
+  this->queue_request_();
+  this->hub_.loop();
+  this->hub_.cancel_sdo(&this->callbacks_);
+  int other_callbacks = 0;
+  ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x22, 0x6041, 0, on_result, &other_callbacks));
+  advance_loop_clock(450);
+  this->hub_.loop();
+  advance_loop_clock(60);  // past the 500 ms response timeout
+  this->hub_.loop();
+  this->bus_.busy = false;
+  this->hub_.loop();
+  this->hub_.loop();
+  // the abort never goes out, the next request does
+  EXPECT_EQ(this->bus_.count(0x621), 0u);
+  EXPECT_EQ(this->bus_.count(0x622), 1u);
+  EXPECT_EQ(this->callbacks_, 0);
+}
+
+TEST_P(SdoCancellation, DroppedAbortDoesNotHoldTheSameNode) {
+  this->bus_.busy = true;
+  this->queue_request_();
+  this->hub_.loop();
+  this->hub_.cancel_sdo(&this->callbacks_);
+  int other_callbacks = 0;
+  ASSERT_TRUE(this->hub_.read_sdo<uint16_t>(0x21, 0x6041, 0, on_result, &other_callbacks));
+  advance_loop_clock(510);
+  this->hub_.loop();
+  this->bus_.busy = false;
+  this->hub_.loop();
+  this->hub_.loop();
+  // no guard after an abort that was never sent: the request to the same node goes out right away
+  ASSERT_EQ(this->bus_.count(0x621), 1u);
+  EXPECT_EQ(this->bus_.find(0x621)->data[0], 0x40);
+}
+
 INSTANTIATE_TEST_SUITE_P(ReadAndWrite, SdoCancellation, ::testing::Bool());
 
 }  // namespace esphome::canopen::testing
