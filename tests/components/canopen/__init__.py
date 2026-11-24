@@ -25,5 +25,5 @@ def override_manifest(manifest: ComponentManifestOverride) -> None:
 
     manifest.enable_codegen()
     manifest.to_code = to_code_testing
-    # MULTI_CONF components get an empty list (no to_code call) in the unit test build
+    # a MULTI_CONF component gets no to_code call in the unit test build
     manifest.multi_conf = False

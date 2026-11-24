@@ -1,4 +1,4 @@
-"""Tests for the canopen component (CANopenNode based)."""
+"""Tests for the canopen component."""
 
 from collections.abc import Callable
 from pathlib import Path
@@ -40,10 +40,11 @@ def test_codegen(
     assert 'canopen_node->set_hardware_version("rev B");' in main_cpp
     assert "set_device_name(" not in main_cpp
     assert "set_software_version(" not in main_cpp
-    # sdo_write: a negative value is passed as is, write_sdo() masks it to `size` bytes
-    assert "canopen::SDOWriteAction<>" in main_cpp
-    assert "set_value([]() -> uint32_t {\n    return -1;\n});" in main_cpp
-    assert "set_size(2);" in main_cpp
+    # sdo_write: a negative value is passed as is, write_sdo() masks it to `size` bytes; no on_success: nullptr
+    assert (
+        "::canopen_node->write_sdo(1, 0x1017, 0x00, -1, 2, canopen::sdo_write_reply"
+        "<nullptr, esphome__lambdaaction_id_5__fn>, nullptr);"
+    ) in main_cpp
     # SDO block transfer: the CANopenNode configuration and the define for dump_config()
     assert "-DCO_CONFIG_SDO_SRV=0x06" in CORE.build_flags
     assert "-DCO_CONFIG_SDO_SRV_BUFFER_SIZE=900" in CORE.build_flags
@@ -126,19 +127,6 @@ def test_sdo_write_value_fits_size(value: int, size: int, valid: bool) -> None:
     else:
         with pytest.raises(cv.Invalid, match="doesn't fit"):
             SDO_WRITE_SCHEMA(config)
-
-
-@pytest.mark.parametrize("key", ["on_success", "on_error"])
-def test_sdo_write_single_automation(key: str) -> None:
-    """An action's trigger runs one automation: a list of automations is rejected."""
-    automations = [{"then": [{"delay": "1s"}]}, {"then": [{"delay": "2s"}]}]
-    with pytest.raises(cv.Invalid, match="only a single automation"):
-        SDO_WRITE_SCHEMA({**SDO_WRITE, "value": 1, key: automations})
-
-
-def test_sdo_write_size() -> None:
-    with pytest.raises(cv.Invalid):
-        SDO_WRITE_SCHEMA({**SDO_WRITE, "value": 1, "size": 3})
 
 
 def test_register_node(
@@ -288,11 +276,15 @@ def test_client_only_codegen(
     assert "-DCO_CONFIG_SDO_CLI_BUFFER_SIZE=7" in CORE.build_flags
     # no hub with a node id: the node part isn't compiled (nor linked from CANopenNode)
     assert "USE_CANOPEN_NODE" not in _defines()
-    # canopen.sdo_read
-    assert "canopen::SDOReadAction<>" in main_cpp
-    assert "set_size(4);" in main_cpp
-    assert "get_value_trigger()" in main_cpp
-    assert "get_error_trigger()" in main_cpp
+    # the actions call the hub; without automations no reply function
+    assert (
+        "::canopen_client->read_sdo(32, 0x1018, 0x01, 4, canopen::sdo_read_reply"
+        "<esphome__lambdaaction_id__fn, esphome__lambdaaction_id_2__fn>, nullptr);"
+    ) in main_cpp
+    assert (
+        "::canopen_client->write_sdo(32, 0x2000, 0x00, 1, 1, nullptr, nullptr);"
+        in main_cpp
+    )
 
 
 @pytest.mark.parametrize(

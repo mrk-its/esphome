@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "esphome/components/canopen/automation.h"
 #include "esphome/components/canopen/types.h"
 
 namespace esphome::canopen::testing {
@@ -25,9 +26,26 @@ TEST(CanopenSDOReply, SignExtension) {
 
 TEST(CanopenSDOReply, Float) { EXPECT_FLOAT_EQ(reply(0x3FC00000, 4).as<float>(), 1.5f); }
 
-TEST(CanopenSDOReply, Ok) {
-  EXPECT_TRUE(reply(0, 1).ok());
-  EXPECT_FALSE((SDOReply{SDOResult::SDO_RESULT_TIMEOUT, 0x05040000, 0, 0, nullptr, 0}).ok());
+struct Seen {
+  uint32_t value{0};
+  SDOResult error{SDOResult::SDO_RESULT_SUCCESS};
+};
+static Seen &seen() {
+  static Seen s;
+  return s;
+}
+static void on_value(const uint32_t &x) { seen().value = x; }
+static void on_error(const SDOResult &result, const uint32_t & /*abort_code*/) { seen().error = result; }
+
+TEST(CanopenSDOReply, ReadReplyRunsTheMatchingAutomation) {
+  seen() = {};
+  sdo_read_reply<on_value, on_error>(nullptr, reply(42, 4));
+  EXPECT_EQ(seen().value, 42u);
+  sdo_read_reply<on_value, on_error>(nullptr, SDOReply{SDOResult::SDO_RESULT_TIMEOUT, 0x05040000, 0, 0, nullptr, 0});
+  EXPECT_EQ(seen().error, SDOResult::SDO_RESULT_TIMEOUT);
+  // an automation that isn't configured is skipped
+  sdo_read_reply<nullptr, on_error>(nullptr, reply(7, 4));
+  EXPECT_EQ(seen().value, 42u);
 }
 
 }  // namespace esphome::canopen::testing
