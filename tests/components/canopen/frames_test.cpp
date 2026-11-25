@@ -64,6 +64,23 @@ TEST(CanopenDecodeEmcy, OtherFrames) {
   EXPECT_FALSE(decode_emcy(0x181, emcy, 8, node, e));  // TPDO1
 }
 
+TEST(NmtStateToString, NamesAndFallback) {
+  EXPECT_STREQ(LOG_STR_ARG(nmt_state_to_string(NMTState::NMT_STATE_BOOTUP)), "bootup");
+  EXPECT_STREQ(LOG_STR_ARG(nmt_state_to_string(NMTState::NMT_STATE_STOPPED)), "stopped");
+  EXPECT_STREQ(LOG_STR_ARG(nmt_state_to_string(NMTState::NMT_STATE_OPERATIONAL)), "operational");
+  EXPECT_STREQ(LOG_STR_ARG(nmt_state_to_string(NMTState::NMT_STATE_PRE_OPERATIONAL)), "pre-operational");
+  EXPECT_STREQ(LOG_STR_ARG(nmt_state_to_string(NMTState::NMT_STATE_UNKNOWN)), "unknown");
+  EXPECT_STREQ(LOG_STR_ARG(nmt_state_to_string(static_cast<NMTState>(3))), "unknown");
+}
+
+TEST(NodeEventToString, NamesAndFallback) {
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(NodeEvent::NODE_EVENT_ONLINE)), "online");
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(NodeEvent::NODE_EVENT_OFFLINE)), "offline");
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(NodeEvent::NODE_EVENT_NMT_CHANGED)), "NMT changed");
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(NodeEvent::NODE_EVENT_RESET)), "reset");
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(static_cast<NodeEvent>(9))), "unknown");
+}
+
 class FramesTest : public ::testing::Test {
  protected:
   struct Received {
