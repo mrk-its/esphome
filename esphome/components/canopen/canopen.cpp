@@ -52,7 +52,9 @@ void CANopenComponent::setup() {
     od.add_var(0x1014, ODA_SDO_R, &this->cob_emcy_, sizeof(this->cob_emcy_));
     od.add_var(0x1017, ODA_SDO_RW, &this->hb_producer_ms_, sizeof(this->hb_producer_ms_));
     this->add_device_info_od_();
+#ifdef USE_CANOPEN_NODE_MONITOR
     this->add_node_monitor_od_();
+#endif
   }
 #endif
 #ifdef USE_CANOPEN_SDO_CLIENT
@@ -77,7 +79,9 @@ void CANopenComponent::setup() {
     cfg.ENTRY_H1014 = od.find(0x1014);
     cfg.CNT_ARR_1003 = 8;  // EM fifo size, needs >= 1
     this->config_device_info_(cfg);
+#ifdef USE_CANOPEN_NODE_MONITOR
     this->config_node_monitor_(cfg);
+#endif
   }
 #endif
 #ifdef USE_CANOPEN_SDO_CLIENT
@@ -123,7 +127,9 @@ void CANopenComponent::setup() {
       return;
     }
 #endif
+#ifdef USE_CANOPEN_NODE_MONITOR
     this->init_node_monitor_();
+#endif
     this->last_us_ = micros();
   }
 #endif
@@ -177,7 +183,9 @@ void CANopenComponent::dump_config() {
 #ifdef USE_CANOPEN_SDO_CLIENT
   ESP_LOGCONFIG(TAG, "  SDO client: response timeout %u ms", this->response_timeout_ms_);
 #endif
+#ifdef USE_CANOPEN_NODE_MONITOR
   this->dump_node_monitor_config_();
+#endif
 #endif
 }
 

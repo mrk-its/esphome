@@ -3,6 +3,7 @@ import esphome.codegen as cg
 from esphome.components.canopen import (
     add_canopennode_library,
     enable_nmt_master,
+    enable_node_monitor,
     enable_pdo,
     enable_sdo_block,
     enable_sdo_client,
@@ -19,6 +20,7 @@ def override_manifest(manifest: ComponentManifestOverride) -> None:
         cg.add_define("USE_CANOPEN_NODE")
         enable_sdo_client()
         enable_nmt_master()
+        enable_node_monitor()
         enable_pdo()
         # sdo_block_test.cpp: the announced download block size
         enable_sdo_block(16)

@@ -171,6 +171,22 @@ def test_register_node(
     assert "-DCO_CONFIG_PDO=0x402F" in CORE.build_flags
 
 
+@pytest.mark.parametrize(
+    ("yaml", "monitor"),
+    [("canopen.yaml", True), ("profile.yaml", True), ("no_ota.yaml", False)],
+)
+def test_node_monitor_only_when_used(
+    generate_main: Callable[[str | Path], str],
+    component_config_path: Callable[[str], Path],
+    yaml: str,
+    monitor: bool,
+) -> None:
+    """CANopenNode's heartbeat consumer is built only for heartbeat_clients or a component monitoring a node."""
+    generate_main(component_config_path(yaml))
+    assert ("USE_CANOPEN_NODE_MONITOR" in _defines()) == monitor
+    assert ("-DCO_CONFIG_HB_CONS=0" in CORE.build_flags) != monitor
+
+
 def test_register_node_own_id(
     component_config_path: Callable[[str], Path],
     capsys: pytest.CaptureFixture[str],

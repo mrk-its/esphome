@@ -127,16 +127,22 @@ class CANopenComponent : public Component {
   }
 
   // --- Node monitoring (node_monitor.cpp) ---
-  // Heartbeat monitoring of another node (CANopenNode heartbeat consumer, OD 0x1016). Before setup() only (called
-  // from codegen). Registering a node again keeps the shortest timeout.
-  void monitor_node(uint8_t node_id, uint16_t timeout_ms);
   // events of all monitored nodes: (node_id, event, state)
   template<typename F> void add_on_node_event_callback(F &&callback) {
     this->node_event_callback_.add(std::forward<F>(callback));
   }
+#ifdef USE_CANOPEN_NODE_MONITOR
+  // Heartbeat monitoring of another node (CANopenNode heartbeat consumer, OD 0x1016; canopen.enable_node_monitor() in
+  // codegen). Before setup() only (called from codegen). Registering a node again keeps the shortest timeout.
+  void monitor_node(uint8_t node_id, uint16_t timeout_ms);
   // state of a monitored node from its last heartbeat; UNKNOWN / false for nodes that aren't monitored
   NMTState get_node_state(uint8_t node_id);
   bool is_node_online(uint8_t node_id);
+#else
+  // no monitored nodes: without heartbeat_clients or a component monitoring a node, the heartbeat consumer isn't built
+  NMTState get_node_state(uint8_t /*node_id*/) { return NMTState::NMT_STATE_UNKNOWN; }
+  bool is_node_online(uint8_t /*node_id*/) { return false; }
+#endif
 
   // --- Raw frames (frames.cpp) ---
   // every heartbeat / EMCY frame on the bus, from any node (our own frames aren't received; those of other local
@@ -292,18 +298,20 @@ class CANopenComponent : public Component {
 #endif  // USE_CANOPEN_NODE
 
   // --- Node monitoring (node_monitor.cpp) ---
+  void node_event_(uint8_t node_id, NodeEvent event, NMTState state);
+  LazyCallbackManager<void(uint8_t, NodeEvent, NMTState)> node_event_callback_;
+#ifdef USE_CANOPEN_NODE_MONITOR
   void add_node_monitor_od_();
   void config_node_monitor_(CO_config_t &cfg);
   void init_node_monitor_();
   void dump_node_monitor_config_();
-  void node_event_(uint8_t node_id, NodeEvent event, NMTState state);
   static void on_hb_started(uint8_t node_id, uint8_t idx, void *object);
   static void on_hb_nmt_changed(uint8_t node_id, uint8_t idx, CO_NMT_internalState_t state, void *object);
   static void on_hb_timeout(uint8_t node_id, uint8_t idx, void *object);
   static void on_hb_remote_reset(uint8_t node_id, uint8_t idx, void *object);
   std::vector<uint32_t> hb_cons_;  // 0x1016:1.., (node_id << 16) | timeout_ms
-  LazyCallbackManager<void(uint8_t, NodeEvent, NMTState)> node_event_callback_;
-  uint8_t hb_cons_count_{0};  // 0x1016:0
+  uint8_t hb_cons_count_{0};       // 0x1016:0
+#endif
 
   // --- Raw frames (frames.cpp) ---
   // frame listeners and heartbeat / EMCY callbacks for a received frame, after CANopenNode
