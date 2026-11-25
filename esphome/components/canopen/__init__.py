@@ -1,20 +1,27 @@
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 from esphome import automation
 import esphome.codegen as cg
 from esphome.components import esp32
 from esphome.components.canbus import CONF_CANBUS_ID, CanbusComponent
+from esphome.components.const import CONF_SERIAL_NUMBER
 import esphome.config_validation as cv
 from esphome.const import (
+    CONF_COMMAND,
     CONF_ID,
+    CONF_IDENTITY,
     CONF_INDEX,
     CONF_ON_ERROR,
     CONF_ON_SUCCESS,
     CONF_ON_VALUE,
     CONF_SIZE,
+    CONF_TIMEOUT,
     CONF_VALUE,
 )
-from esphome.core import CORE, ID
+from esphome.core import CORE, ID, EsphomeError
 from esphome.cpp_generator import MockObj, TemplateArgsType
 import esphome.final_validate as fv
 from esphome.types import ConfigType
@@ -24,23 +31,225 @@ DEPENDENCIES = ["canbus"]
 DOMAIN = "canopen"
 MULTI_CONF = True
 
+# for components that refer to a canopen node (cv.use_id(CANopenComponent))
+CONF_CANOPEN_ID = "canopen_id"
 CONF_NODE_ID = "node_id"
-CONF_ON_EMCY = "on_emcy"
+CONF_HEARTBEAT_INTERVAL = "heartbeat_interval"
+CONF_HEARTBEAT_CLIENTS = "heartbeat_clients"
+CONF_ON_NODE_EVENT = "on_node_event"
 CONF_ON_HEARTBEAT = "on_heartbeat"
+CONF_ON_EMCY = "on_emcy"
+CONF_ON_NMT_STATE_CHANGE = "on_nmt_state_change"
+CONF_NMT_STARTUP = "nmt_startup"
+CONF_SDO_BLOCK_SIZE = "sdo_block_size"
+CONF_CANOPENNODE_PATH = "canopennode_path"
 CONF_RESPONSE_TIMEOUT = "response_timeout"
+CONF_SDO_CLIENT = "sdo_client"
 CONF_SUBINDEX = "subindex"
+CONF_VENDOR_ID = "vendor_id"
+CONF_PRODUCT_CODE = "product_code"
+CONF_REVISION_NUMBER = "revision_number"
+CONF_DEVICE_NAME = "device_name"
+CONF_HARDWARE_VERSION = "hardware_version"
+CONF_SOFTWARE_VERSION = "software_version"
 
 # https://github.com/esphome-libs/CANopenNode: upstream plus ESPHome's CO_driver_target.h
 CANOPENNODE_VERSION = "4.1.0-esphome.2"
 
 ns = cg.esphome_ns.namespace("canopen")
 CANopenComponent = ns.class_("CANopenComponent", cg.Component)
-SDOResult = ns.enum("SDOResult", is_class=True)
+# base class of components that drive another node (canopen_node.h)
+CANopenNode = ns.class_("CANopenNode")
 NMTState = ns.enum("NMTState", is_class=True)
+NodeEvent = ns.enum("NodeEvent", is_class=True)
 Emergency = ns.struct("Emergency")
+SDOResult = ns.enum("SDOResult", is_class=True)
+NMTCommand = ns.enum("NMTCommand", is_class=True)
 
-# every heartbeat / EMCY frame on the bus, from any node
+# a hub without node_id (CANopenComponent::NO_NODE_ID): SDO client only, no CANopen node
+NO_NODE_ID = 0
+
+NMT_COMMANDS = {
+    "start": NMTCommand.NMT_COMMAND_START,
+    "stop": NMTCommand.NMT_COMMAND_STOP,
+    "pre_operational": NMTCommand.NMT_COMMAND_PRE_OPERATIONAL,
+    "reset_node": NMTCommand.NMT_COMMAND_RESET_NODE,
+    "reset_communication": NMTCommand.NMT_COMMAND_RESET_COMMUNICATION,
+}
+
+
+@dataclass
+class CANopenData:
+    # the enable_*() parts already compiled in
+    enabled: set[str] = field(default_factory=set)
+    # canbus id -> the canopen nodes on it, in config order (to_code links them, see set_next_local())
+    local_nodes: dict[str, list[MockObj]] = field(default_factory=dict)
+
+
+def _get_data() -> CANopenData:
+    if DOMAIN not in CORE.data:
+        CORE.data[DOMAIN] = CANopenData()
+    return CORE.data[DOMAIN]
+
+
+def _enable_once(key: str) -> bool:
+    enabled = _get_data().enabled
+    if key in enabled:
+        return False
+    enabled.add(key)
+    return True
+
+
+def _hub_configs() -> list[ConfigType]:
+    """The validated canopen hub configs, for codegen checks (not a list in the C++ unit test build)."""
+    hubs = CORE.config.get(DOMAIN)
+    return hubs if isinstance(hubs, list) else []
+
+
+def enable_sdo_client() -> None:
+    """Compile the SDO client (read_sdo(), write_sdo(), ...): for actions and components that use it."""
+    if not _enable_once("sdo_client"):
+        return
+    for hub in _hub_configs():
+        if hub.get(CONF_SDO_CLIENT) is False:
+            raise EsphomeError(
+                f"canopen {hub[CONF_ID]} has sdo_client: false, but the SDO client is used (canopen.sdo_read / "
+                "canopen.sdo_write actions or a component); remove sdo_client: false"
+            )
+    cg.add_define("USE_CANOPEN_SDO_CLIENT")
+    # enable | segmented | local (requests to our own node id use our OD), with the fifo. No block transfer: it's
+    # optional in CiA 301, a server without it aborts the request, and the client doesn't fall back to segmented.
+    cg.add_build_flag("-DCO_CONFIG_SDO_CLI=0x0B")
+    cg.add_build_flag("-DCO_CONFIG_FIFO=0x01")
+    # one segment: drained before the next one is requested (sdo_client.cpp)
+    cg.add_build_flag("-DCO_CONFIG_SDO_CLI_BUFFER_SIZE=7")
+
+
+# CANopenNode's minimum server buffer for block transfer (CO_SDOserver.c checks it)
+SDO_BLOCK_BUFFER_SIZE = 900
+
+
+def enable_sdo_block(block_size: int) -> None:
+    """SDO server block transfer (CiA 301), e.g. for firmware or log uploads.
+
+    `block_size` (1..127) caps the segments per block the server announces for downloads (the client sends a
+    block back to back, so it must fit the CAN receive path); for uploads the client chooses it. Without block
+    transfer the server is segmented only, with a 32-byte buffer.
+
+    These are CANopenNode build flags, so they apply to every canopen node of the firmware: a node's
+    sdo_block_size (validated to be the same on all of them) wins over `block_size`, otherwise the first call
+    sets it.
+    """
+    if not _enable_once("sdo_block"):
+        return
+    configured = {
+        hub[CONF_SDO_BLOCK_SIZE]
+        for hub in CORE.config.get(DOMAIN, [])
+        if CONF_SDO_BLOCK_SIZE in hub
+    }
+    if configured:
+        block_size = configured.pop()
+    cg.add_define("CANOPEN_SDO_BLOCK_SIZE", block_size)
+    # segmented | block, the buffer for a whole block, the download block size cap (CO_CONFIG_SDO_SRV_BLKSIZE needs
+    # the SDO server block size patch of the pinned CANopenNode), crc16 for the block CRC
+    cg.add_build_flag("-DCO_CONFIG_SDO_SRV=0x06")
+    cg.add_build_flag(f"-DCO_CONFIG_SDO_SRV_BUFFER_SIZE={SDO_BLOCK_BUFFER_SIZE}")
+    cg.add_build_flag(f"-DCO_CONFIG_SDO_SRV_BLKSIZE={block_size}")
+    cg.add_build_flag("-DCO_CONFIG_CRC16=0x01")
+
+
+def enable_pdo() -> None:
+    """Compile our own PDOs (configure_tpdo(), configure_rpdo(), request_tpdo()): for components that use them."""
+    if not _enable_once("pdo"):
+        return
+    cg.add_define("USE_CANOPEN_PDO")
+    # RPDO | TPDO | RPDO timers | TPDO timers | OD IO access (RPDO data reaches the handlers) | OD dynamic (records
+    # changed over SDO); no SYNC
+    cg.add_build_flag("-DCO_CONFIG_PDO=0x402F")
+    # 0x1010 / 0x1011 store / restore of the PDO parameters (CO_storage, our callbacks on preferences)
+    cg.add_build_flag("-DCO_CONFIG_STORAGE=0x01")
+
+
+def enable_nmt_master() -> None:
+    """Compile the NMT master (send_nmt()): for actions and components that use it."""
+    if not _enable_once("nmt_master"):
+        return
+    cg.add_define("USE_CANOPEN_NMT_MASTER")
+    # callback change | master
+    cg.add_build_flag("-DCO_CONFIG_NMT=0x03")
+
+
+# for components that drive another node (subclasses of CANopenNode), see register_node()
+CANOPEN_NODE_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(CONF_CANOPEN_ID): cv.use_id(CANopenComponent),
+        cv.Required(CONF_NODE_ID): cv.All(cv.int_, cv.Range(min=1, max=127)),
+    }
+)
+
+
+def require_node_id(hub_id: ID, what: str) -> ConfigType:
+    """Final validation helper for things that need a CANopen node (OD, PDOs, NMT, ...): the hub hub_id must have a
+    node_id. Returns the hub's config."""
+    full_config = fv.full_config.get()
+    path = full_config.get_path_for_id(hub_id)[:-1]
+    hub = full_config.get_config_for_path(path)
+    if CONF_NODE_ID not in hub:
+        raise cv.Invalid(
+            f"{what} needs a CANopen node: canopen {hub_id} has no node_id (SDO client only)"
+        )
+    return hub
+
+
+def final_validate_canopen_node(config: ConfigType) -> ConfigType:
+    """FINAL_VALIDATE_SCHEMA helper for CANOPEN_NODE_SCHEMA: the hub must be a node, and the node can't be the hub's own
+    node id."""
+    hub = require_node_id(config[CONF_CANOPEN_ID], "a canopen profile component")
+    if hub[CONF_NODE_ID] == config[CONF_NODE_ID]:
+        raise cv.Invalid(
+            f"node_id {config[CONF_NODE_ID]} is the own id of canopen {config[CONF_CANOPEN_ID]}",
+            path=[CONF_NODE_ID],
+        )
+    return config
+
+
+async def register_node(
+    var: MockObj,
+    config: ConfigType,
+    sdo: bool = False,
+    nmt: bool = False,
+    heartbeat_timeout: cv.TimePeriod | None = None,
+) -> MockObj:
+    """Codegen for a CANopenNode subclass built from CANOPEN_NODE_SCHEMA.
+
+    Compiles the parts of the hub the component uses (SDO client, NMT master) and, with a heartbeat_timeout
+    (TimePeriod, validated with UINT16_MS), monitors the node: its events reach the on_node_* hooks. The hub merges it with
+    heartbeat_clients, keeping the shortest timeout. The node's EMCY frames reach on_node_emcy().
+    """
+    cg.add_define("USE_CANOPEN_EMCY")
+    if sdo:
+        enable_sdo_client()
+    if nmt:
+        enable_nmt_master()
+    if heartbeat_timeout is not None:
+        hub = await cg.get_variable(config[CONF_CANOPEN_ID])
+        cg.add(
+            hub.monitor_node(config[CONF_NODE_ID], heartbeat_timeout.total_milliseconds)
+        )
+    return var
+
+
 CALLBACK_AUTOMATIONS = (
+    automation.CallbackAutomation(
+        CONF_ON_NODE_EVENT,
+        "add_on_node_event_callback",
+        [(cg.uint8, "node_id"), (NodeEvent, "event"), (NMTState, "state")],
+    ),
+    automation.CallbackAutomation(
+        CONF_ON_NMT_STATE_CHANGE,
+        "add_on_nmt_state_callback",
+        [(NMTState, "state")],
+    ),
     automation.CallbackAutomation(
         CONF_ON_HEARTBEAT,
         "add_on_heartbeat_callback",
@@ -58,59 +267,251 @@ CALLBACK_AUTOMATIONS = (
 )
 
 
-# response_timeout holds uint16 ms
+def absolute_path(value: Any) -> str:
+    # the zephyr library converter rejects relative file:// sources
+    return str(Path(cv.string(value)).expanduser().resolve())
+
+
+# 0x1016 (consumer timeout) and 0x1017 (producer time) hold uint16 ms
 UINT16_MS = cv.All(
     cv.positive_time_period_milliseconds,
     cv.Range(min=cv.TimePeriod(milliseconds=1), max=cv.TimePeriod(milliseconds=65535)),
 )
 
-
-CONFIG_SCHEMA = cv.Schema(
+# 0x1018; vendor ids are assigned by CiA
+IDENTITY_SCHEMA = cv.Schema(
     {
-        cv.GenerateID(): cv.declare_id(CANopenComponent),
-        cv.GenerateID(CONF_CANBUS_ID): cv.use_id(CanbusComponent),
-        cv.Optional(CONF_RESPONSE_TIMEOUT, "500ms"): UINT16_MS,
-        cv.Optional(CONF_ON_HEARTBEAT): automation.validate_automation({}),
-        cv.Optional(CONF_ON_EMCY): automation.validate_automation({}),
+        cv.Optional(CONF_VENDOR_ID, default=0): cv.hex_uint32_t,
+        cv.Optional(CONF_PRODUCT_CODE, default=0): cv.hex_uint32_t,
+        cv.Optional(CONF_REVISION_NUMBER, default=0): cv.hex_uint32_t,
+        cv.Optional(CONF_SERIAL_NUMBER, default=0): cv.hex_uint32_t,
     }
-).extend(cv.COMPONENT_SCHEMA)
+)
+
+# options of a CANopen node, not allowed without node_id
+NODE_OPTIONS = (
+    CONF_HEARTBEAT_INTERVAL,
+    CONF_HEARTBEAT_CLIENTS,
+    CONF_ON_NODE_EVENT,
+    CONF_NMT_STARTUP,
+    CONF_ON_NMT_STATE_CHANGE,
+    CONF_IDENTITY,
+    CONF_DEVICE_NAME,
+    CONF_HARDWARE_VERSION,
+    CONF_SOFTWARE_VERSION,
+    CONF_SDO_BLOCK_SIZE,
+)
+
+
+def validate_client_only_options(config: Any) -> Any:
+    """Without node_id the hub is an SDO client only: no node options. Runs on the raw config, before the schema
+    fills in the node options' defaults."""
+    if not isinstance(config, dict) or CONF_NODE_ID in config:
+        return config
+    for key in NODE_OPTIONS:
+        if key in config:
+            raise cv.Invalid(
+                f"{key} needs a CANopen node: set node_id (without it the hub is an SDO client only)",
+                path=[key],
+            )
+    return config
+
+
+def validate_client_only(config: ConfigType) -> ConfigType:
+    """Without node_id the SDO client can't be turned off."""
+    if CONF_NODE_ID not in config and config.get(CONF_SDO_CLIENT) is False:
+        raise cv.Invalid(
+            "sdo_client: false without node_id leaves nothing to run: the hub without node_id is an SDO client only",
+            path=[CONF_SDO_CLIENT],
+        )
+    return config
+
+
+HB_CLIENT_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_NODE_ID): cv.All(cv.int_, cv.Range(min=1, max=127)),
+        cv.Required(CONF_TIMEOUT): UINT16_MS,
+    }
+)
+
+
+def validate_heartbeat_clients(config: ConfigType) -> ConfigType:
+    for client in config[CONF_HEARTBEAT_CLIENTS]:
+        if client[CONF_NODE_ID] == config.get(CONF_NODE_ID):
+            raise cv.Invalid(
+                f"heartbeat_clients: node_id {client[CONF_NODE_ID]} is this node's own id"
+            )
+    return config
+
+
+CONFIG_SCHEMA = cv.All(
+    validate_client_only_options,
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(CANopenComponent),
+            cv.GenerateID(CONF_CANBUS_ID): cv.use_id(CanbusComponent),
+            # without node_id: SDO client only (see validate_client_only)
+            cv.Optional(CONF_NODE_ID): cv.All(cv.int_, cv.Range(min=1, max=127)),
+            cv.Optional(CONF_HEARTBEAT_INTERVAL, "5000ms"): UINT16_MS,
+            cv.Optional(CONF_HEARTBEAT_CLIENTS, []): cv.ensure_list(HB_CLIENT_SCHEMA),
+            # events of the heartbeat_clients nodes (online, offline, NMT changed, reset)
+            cv.Optional(CONF_ON_NODE_EVENT): automation.validate_automation({}),
+            # every heartbeat / EMCY frame on the bus, any node
+            cv.Optional(CONF_ON_HEARTBEAT): automation.validate_automation({}),
+            cv.Optional(CONF_ON_EMCY): automation.validate_automation({}),
+            cv.Optional(CONF_RESPONSE_TIMEOUT, "500ms"): UINT16_MS,
+            # SDO client: unset = compiled in if something uses it; true = always (e.g. for lambdas); false = never
+            # (an error if something uses it). Firmware-wide: one value for all canopen hubs.
+            cv.Optional(CONF_SDO_CLIENT): cv.boolean,
+            # SDO server block transfer, see enable_sdo_block(); without it segmented only. Firmware-wide: the
+            # same on every canopen node
+            cv.Optional(CONF_SDO_BLOCK_SIZE): cv.int_range(min=1, max=127),
+            # pre_operational: until an NMT master (or set_nmt_state()) starts the node
+            cv.Optional(CONF_NMT_STARTUP, default="operational"): cv.one_of(
+                "operational", "pre_operational", lower=True
+            ),
+            # our own NMT state
+            cv.Optional(CONF_ON_NMT_STATE_CHANGE): automation.validate_automation({}),
+            cv.Optional(CONF_IDENTITY, default={}): IDENTITY_SCHEMA,
+            # 0x1008 (default: the node's name), 0x1009, 0x100A (default: the ESPHome version)
+            cv.Optional(CONF_DEVICE_NAME): cv.string,
+            cv.Optional(CONF_HARDWARE_VERSION): cv.string,
+            cv.Optional(CONF_SOFTWARE_VERSION): cv.string,
+            # local CANopenNode checkout instead of the registry package (development)
+            cv.Optional(CONF_CANOPENNODE_PATH): absolute_path,
+        }
+    ).extend(cv.COMPONENT_SCHEMA),
+    validate_heartbeat_clients,
+    validate_client_only,
+)
 
 
 def _final_validate(config: ConfigType) -> ConfigType:
-    # their SDO clients would use the same COB-IDs, and a reply would end both hubs' requests
-    buses = [hub[CONF_CANBUS_ID] for hub in fv.full_config.get()[DOMAIN]]
-    if buses.count(config[CONF_CANBUS_ID]) > 1:
-        raise cv.Invalid("one canopen hub per canbus", path=[CONF_CANBUS_ID])
+    for other in fv.full_config.get().get(DOMAIN, []):
+        # CANopenNode build flags (enable_sdo_block()): one value for the whole firmware
+        if (
+            CONF_SDO_BLOCK_SIZE in config
+            and CONF_SDO_BLOCK_SIZE in other
+            and other[CONF_SDO_BLOCK_SIZE] != config[CONF_SDO_BLOCK_SIZE]
+        ):
+            raise cv.Invalid(
+                f"sdo_block_size applies to every canopen node of the firmware: {config[CONF_SDO_BLOCK_SIZE]} "
+                f"here, {other[CONF_SDO_BLOCK_SIZE]} on canopen {other[CONF_ID]}",
+                path=[CONF_SDO_BLOCK_SIZE],
+            )
+        # the SDO client is compiled for the whole firmware (enable_sdo_client())
+        if config.get(CONF_SDO_CLIENT) is False and (
+            other.get(CONF_SDO_CLIENT) is True or CONF_NODE_ID not in other
+        ):
+            raise cv.Invalid(
+                f"sdo_client applies to every canopen hub of the firmware: false here, but canopen {other[CONF_ID]} "
+                + (
+                    "has sdo_client: true"
+                    if CONF_NODE_ID in other
+                    else "has no node_id (SDO client only)"
+                ),
+                path=[CONF_SDO_CLIENT],
+            )
+        # nodes on the same canbus receive each other's frames: their ids must differ, as on any CANopen bus
+        if (
+            other[CONF_ID] != config[CONF_ID]
+            and other[CONF_CANBUS_ID] == config[CONF_CANBUS_ID]
+            and CONF_NODE_ID in config
+            and other.get(CONF_NODE_ID) == config[CONF_NODE_ID]
+        ):
+            raise cv.Invalid(
+                f"node_id {config[CONF_NODE_ID]} is also used by canopen {other[CONF_ID]} on the same canbus",
+                path=[CONF_NODE_ID],
+            )
+        # their SDO clients would use the same COB-IDs, and a reply would end both clients' requests
+        if (
+            other[CONF_ID] != config[CONF_ID]
+            and other[CONF_CANBUS_ID] == config[CONF_CANBUS_ID]
+            and CONF_NODE_ID not in config
+            and CONF_NODE_ID not in other
+        ):
+            raise cv.Invalid(
+                f"canopen {other[CONF_ID]} on the same canbus has no node_id either: one SDO client only hub "
+                "per canbus",
+                path=[CONF_CANBUS_ID],
+            )
     return config
 
 
 FINAL_VALIDATE_SCHEMA = _final_validate
 
 
-def add_canopennode_library() -> None:
-    """Add CANopenNode and its configuration; also used by the C++ unit tests."""
+def add_canopennode_library(path: str | None = None) -> None:
+    """Add the CANopenNode library (also used by the C++ unit tests).
+
+    Its target header (CO_driver_target.h) is in the library itself, so no include path is needed.
+    """
     if CORE.is_esp32:
-        esp32.add_idf_component(name="esphome/canopennode", ref=CANOPENNODE_VERSION)
+        esp32.add_idf_component(
+            name="esphome/canopennode", ref=CANOPENNODE_VERSION, path=path
+        )
+    elif path is not None:
+        cg.add_library("CANopenNode", None, f"file://{path}")
     else:
         cg.add_library("esphome/CANopenNode", CANOPENNODE_VERSION)
-    # segmented, no block transfer: optional in CiA 301 and the client does not fall back
-    cg.add_build_flag("-DCO_CONFIG_SDO_CLI=0x03")
-    cg.add_build_flag("-DCO_CONFIG_FIFO=0x01")
-    # one segment, drained before the next is requested
-    cg.add_build_flag("-DCO_CONFIG_SDO_CLI_BUFFER_SIZE=7")
 
 
 async def to_code(config: ConfigType) -> None:
-    add_canopennode_library()
+    add_canopennode_library(config.get(CONF_CANOPENNODE_PATH))
 
     canbus = await cg.get_variable(config[CONF_CANBUS_ID])
-    var = cg.new_Pvariable(config[CONF_ID], canbus)
+    var = cg.new_Pvariable(
+        config[CONF_ID], canbus, config.get(CONF_NODE_ID, NO_NODE_ID)
+    )
     await cg.register_component(var, config)
+    # other nodes on this canbus: a ring in config order (each call closes it again)
+    local = _get_data().local_nodes.setdefault(str(config[CONF_CANBUS_ID]), [])
+    if local:
+        cg.add(local[-1].set_next_local(var))
+        cg.add(var.set_next_local(local[0]))
+    local.append(var)
     cg.add(var.set_response_timeout(config[CONF_RESPONSE_TIMEOUT]))
     if CONF_ON_HEARTBEAT in config:
         cg.add_define("USE_CANOPEN_HEARTBEAT")
     if CONF_ON_EMCY in config:
         cg.add_define("USE_CANOPEN_EMCY")
+    if CONF_NODE_ID not in config or config.get(CONF_SDO_CLIENT):
+        enable_sdo_client()
+    if CONF_NODE_ID not in config:
+        # SDO client only: the node options' defaults don't apply (validate_client_only_options rejects them)
+        await automation.build_callback_automations(var, config, CALLBACK_AUTOMATIONS)
+        return
+    # the node part of the hub (CO_CANopenInit(), CO_process()): without any hub with a node id it isn't compiled,
+    # so CANopenNode's NMT, heartbeat, EMCY and SDO server aren't linked
+    cg.add_define("USE_CANOPEN_NODE")
+    cg.add(var.set_heartbeat_interval(config[CONF_HEARTBEAT_INTERVAL]))
+    if config[CONF_NMT_STARTUP] != "operational":
+        cg.add(var.set_start_operational(False))
+    if CONF_SDO_BLOCK_SIZE in config:
+        enable_sdo_block(config[CONF_SDO_BLOCK_SIZE])
+    identity = config[CONF_IDENTITY]
+    cg.add(
+        var.set_identity(
+            identity[CONF_VENDOR_ID],
+            identity[CONF_PRODUCT_CODE],
+            identity[CONF_REVISION_NUMBER],
+            identity[CONF_SERIAL_NUMBER],
+        )
+    )
+    for key, setter in (
+        (CONF_DEVICE_NAME, var.set_device_name),
+        (CONF_HARDWARE_VERSION, var.set_hardware_version),
+        (CONF_SOFTWARE_VERSION, var.set_software_version),
+    ):
+        if key in config:
+            cg.add(setter(config[key]))
+    for client in config[CONF_HEARTBEAT_CLIENTS]:
+        cg.add(
+            var.monitor_node(
+                client[CONF_NODE_ID], client[CONF_TIMEOUT].total_milliseconds
+            )
+        )
+
     await automation.build_callback_automations(var, config, CALLBACK_AUTOMATIONS)
 
 
@@ -134,6 +535,7 @@ SDO_ACTION_SCHEMA = cv.Schema(
         cv.Optional(CONF_ON_ERROR): automation.validate_automation(single=True),
     }
 )
+
 
 _ADDRESS = (
     (CONF_NODE_ID, cg.uint8),
@@ -164,6 +566,7 @@ async def _sdo_action_to_code(
     on_ok_args: TemplateArgsType,
 ) -> MockObj:
     """``request(parent)(<keys>, size, reply<on_ok, on_error>, nullptr)``."""
+    enable_sdo_client()
     values = [
         await automation.call_user_lambda(value, args, type_)
         if cg.is_template(value := config[key])
@@ -220,6 +623,44 @@ async def sdo_write_to_code(
         on_ok=CONF_ON_SUCCESS,
         on_ok_args=[],
     )
+
+
+NMT_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(): cv.use_id(CANopenComponent),
+        # 0 = all nodes
+        cv.Required(CONF_NODE_ID): cv.templatable(cv.int_range(min=0, max=127)),
+        cv.Required(CONF_COMMAND): cv.enum(NMT_COMMANDS, lower=True),
+    }
+)
+
+
+_nmt_builder = automation.apply_action_builder(
+    "canopen.nmt",
+    NMT_SCHEMA,
+    automation.ApplyCall(
+        "send_nmt({}, {})", ((CONF_NODE_ID, cg.uint8), (CONF_COMMAND, NMTCommand))
+    ),
+)
+
+
+@automation.register_action(
+    "canopen.nmt", automation.ApplyAction, NMT_SCHEMA, synchronous=True
+)
+async def nmt_to_code(
+    config: ConfigType,
+    action_id: ID,
+    template_arg: cg.TemplateArguments,
+    args: TemplateArgsType,
+) -> MockObj:
+    hub_id = config[CONF_ID]
+    for hub in _hub_configs():
+        if hub[CONF_ID] == hub_id and CONF_NODE_ID not in hub:
+            raise EsphomeError(
+                f"canopen.nmt needs a CANopen node: canopen {hub_id} has no node_id (SDO client only)"
+            )
+    enable_nmt_master()
+    return await _nmt_builder(config, action_id, template_arg, args)
 
 
 SDO_READ_SCHEMA = SDO_ACTION_SCHEMA.extend(

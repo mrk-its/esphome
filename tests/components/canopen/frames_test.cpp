@@ -89,6 +89,14 @@ INSTANTIATE_TEST_SUITE_P(States, NmtStateToString,
                                            std::make_pair(NMTState::NMT_STATE_UNKNOWN, "unknown"),
                                            std::make_pair(static_cast<NMTState>(3), "unknown")));
 
+TEST(NodeEventToString, NamesAndFallback) {
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(NodeEvent::NODE_EVENT_ONLINE)), "online");
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(NodeEvent::NODE_EVENT_OFFLINE)), "offline");
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(NodeEvent::NODE_EVENT_NMT_CHANGED)), "NMT changed");
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(NodeEvent::NODE_EVENT_RESET)), "reset");
+  EXPECT_STREQ(LOG_STR_ARG(node_event_to_string(static_cast<NodeEvent>(9))), "unknown");
+}
+
 class FramesTest : public ::testing::Test {
  protected:
   struct Received {
@@ -96,7 +104,7 @@ class FramesTest : public ::testing::Test {
     std::vector<uint8_t> data;
   };
   FakeCanbus bus_;
-  TestHub hub_{&this->bus_};
+  TestHub hub_{&this->bus_, CANopenComponent::NO_NODE_ID};
   std::vector<Received> received_;
 
   static void on_frame(void *context, uint32_t can_id, const uint8_t *data, uint8_t len) {
