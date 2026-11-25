@@ -33,7 +33,8 @@ NMTState to_nmt_state(CO_NMT_internalState_t state);
 //   handlers (get_od()), configure_tpdo() / configure_rpdo(), monitor_node(), identity and device information. Two
 //   places run early enough: setters called from codegen (they run in main(), before App.setup()), or the setup()
 //   of a component whose setup priority is above the hub's (setup_priority::HARDWARE - 1, after the CAN bus), e.g.
-//   HARDWARE - 0.5. Calls made later are logged as errors and ignored.
+//   HARDWARE - 0.5. OD entries and handlers, PDO configurations and monitored nodes added later are logged as errors
+//   and ignored; the identity and device information setters aren't checked.
 // The rest is runtime API, e.g. from loop() or automations: add_frame_listener() and the callbacks (any time),
 // send_frame(), SDO client and NMT master requests (made before the hub's setup(), they wait for it); write_od(),
 // read_od() and request_tpdo() need the OD, so they fail or do nothing before the hub's setup(), which runs before
@@ -66,7 +67,7 @@ class CANopenComponent : public Component {
   // others, since a CAN controller doesn't receive its own frames. nullptr = no other local node.
   void set_next_local(CANopenComponent *next) { this->next_local_ = next; }
 #ifdef USE_CANOPEN_NODE
-  void set_heartbeat_interval(uint32_t ms) { this->hb_producer_ms_ = ms; }
+  void set_heartbeat_interval(uint16_t ms) { this->hb_producer_ms_ = ms; }
   // NMT state after boot: OPERATIONAL (default) or PRE_OPERATIONAL (until an NMT master, or set_nmt_state(), starts
   // the node)
   void set_start_operational(bool operational) { this->start_operational_ = operational; }
