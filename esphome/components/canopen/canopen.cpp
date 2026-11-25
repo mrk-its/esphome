@@ -20,9 +20,9 @@ static_assert(NMT_STATES.size() == NMTStateStrings::LAST_INDEX);
 const LogString *nmt_state_to_string(NMTState state) {
   for (size_t i = 0; i < NMT_STATES.size(); i++) {
     if (NMT_STATES[i] == state)
-      return NMTStateStrings::get_log_str(i);
+      return NMTStateStrings::get_log_str(static_cast<uint8_t>(i), NMTStateStrings::LAST_INDEX);
   }
-  return NMTStateStrings::get_log_str(NMTStateStrings::LAST_INDEX);
+  return NMTStateStrings::get_log_str(NMTStateStrings::LAST_INDEX, NMTStateStrings::LAST_INDEX);
 }
 
 NMTState to_nmt_state(CO_NMT_internalState_t state) {
