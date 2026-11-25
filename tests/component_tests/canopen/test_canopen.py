@@ -97,6 +97,16 @@ def test_heartbeat_client_timeout_fits_uint16(timeout: str, valid: bool) -> None
             CONFIG_SCHEMA(config)
 
 
+@pytest.mark.parametrize(("timeout", "valid"), [("65535ms", True), ("65536ms", False)])
+def test_response_timeout_fits_uint16(timeout: str, valid: bool) -> None:
+    config = {"canbus_id": "can_bus", "response_timeout": timeout}
+    if valid:
+        CONFIG_SCHEMA(config)
+    else:
+        with pytest.raises(cv.Invalid, match="at most"):
+            CONFIG_SCHEMA(config)
+
+
 @pytest.mark.parametrize(("interval", "valid"), [("65535ms", True), ("65536ms", False)])
 def test_heartbeat_interval_fits_uint16(interval: str, valid: bool) -> None:
     """0x1017 stores the producer heartbeat time as uint16 milliseconds."""

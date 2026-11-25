@@ -119,3 +119,4 @@ script:
             if (reply.ok())
               ESP_LOGI("canopen_test", "vendor id 0x%08x", (unsigned) reply.value);
           }, nullptr);
+      - lambda: id(canopen_client).cancel_sdo(nullptr);
