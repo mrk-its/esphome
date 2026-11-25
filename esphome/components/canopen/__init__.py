@@ -7,7 +7,7 @@ from esphome import automation
 import esphome.codegen as cg
 from esphome.components import esp32
 from esphome.components.canbus import CONF_CANBUS_ID, CanbusComponent
-from esphome.components.const import CONF_SERIAL_NUMBER
+from esphome.components.const import CONF_HARDWARE_VERSION, CONF_SERIAL_NUMBER
 import esphome.config_validation as cv
 from esphome.const import (
     CONF_COMMAND,
@@ -50,7 +50,6 @@ CONF_VENDOR_ID = "vendor_id"
 CONF_PRODUCT_CODE = "product_code"
 CONF_REVISION_NUMBER = "revision_number"
 CONF_DEVICE_NAME = "device_name"
-CONF_HARDWARE_VERSION = "hardware_version"
 CONF_SOFTWARE_VERSION = "software_version"
 
 # https://github.com/esphome-libs/CANopenNode: upstream plus ESPHome's CO_driver_target.h
