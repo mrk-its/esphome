@@ -137,6 +137,8 @@ void CANopenComponent::setup() {
   for (const FrameListener *l = this->frame_listeners_; l != nullptr; l = l->next)
     this->check_frame_listener_(l->can_id, l->mask);
 
+  if (this->next_local_ != nullptr && this->next_local_ != this)
+    this->local_queue_.init(LOCAL_QUEUE_SIZE);
   CO_CANsetNormalMode(this->co_->CANmodule);
   this->canbus_->add_frame_callback([this](const canbus::CanFrame &frame) { this->on_frame_(frame); });
   ESP_LOGV(TAG, "CANopenNode initialized, node 0x%02x, heap %" PRIu32 " B", this->node_id_, heap);
@@ -181,7 +183,8 @@ void CANopenComponent::dump_config() {
 
 bool CANopenComponent::idle_() const {
 #ifdef USE_CANOPEN_SDO_CLIENT
-  return this->is_client_only() && this->co_->CANmodule->CANtxCount == 0 && this->sdo_idle_();
+  return this->is_client_only() && this->co_->CANmodule->CANtxCount == 0 && this->sdo_idle_() &&
+         this->local_queue_.empty();
 #else
   return false;
 #endif
@@ -194,6 +197,8 @@ void CANopenComponent::loop() {
     this->disable_loop();
     return;
   }
+  // frames from other local nodes first, as the canbus loop delivered the bus's before this one
+  this->deliver_local_();
 #ifdef USE_CANOPEN_SDO_CLIENT
   // SDO client first: an unsent frame ends at its deadline, before the flush could send it. Time runs only here,
   // after the canbus loop delivered its frames: a received frame may come before a queued reply.
