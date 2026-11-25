@@ -60,8 +60,10 @@ class FakeCanbus : public canbus::Canbus {
  protected:
   bool setup_internal() override { return true; }
   canbus::Error send_message(canbus::CanFrame *frame) override {
-    if (this->on_send)
-      this->on_send(frame->can_id);
+    if (this->on_send) {
+      auto hook = this->on_send;  // the hook may clear itself
+      hook(frame->can_id);
+    }
     if (this->busy)
       return canbus::ERROR_ALLTXBUSY;
     this->sent.push_back({frame->can_id, {frame->data, frame->data + frame->can_data_length_code}});
@@ -94,9 +96,10 @@ class SdoTest : public ::testing::Test {
   TestHub hub_{&this->bus_, CANopenComponent::NO_NODE_ID};
   std::vector<SDOReply> replies_;
   std::string data_;  // reply.data, copied during the callback
+  uint16_t response_timeout_ms_{20};
 
   void SetUp() override {
-    this->hub_.set_response_timeout(20);
+    this->hub_.set_response_timeout(this->response_timeout_ms_);
     this->hub_.setup();
     ASSERT_FALSE(this->hub_.is_failed());
   }

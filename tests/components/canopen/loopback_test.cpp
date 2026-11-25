@@ -45,8 +45,10 @@ TEST_F(LocalPair, HeartbeatReachesTheOtherNode) {
 
 TEST_F(LocalPair, FrameListenerAndSendFrame) {
   Frames on_a, on_b;
-  a.add_frame_listener(0x123, 0x7FF, Frames::on_frame, &on_a);
-  b.add_frame_listener(0x123, 0x7FF, Frames::on_frame, &on_b);
+  FrameListener listener_a{0x123, 0x7FF, Frames::on_frame, &on_a};
+  FrameListener listener_b{0x123, 0x7FF, Frames::on_frame, &on_b};
+  a.add_frame_listener(listener_a);
+  b.add_frame_listener(listener_b);
   start();
   const uint8_t data[] = {1, 2, 3};
   ASSERT_TRUE(a.send_frame(0x123, data, sizeof(data)));
@@ -163,7 +165,8 @@ TEST(CanopenLocal, NoOtherNodes) {
   // a ring of one (or none): the node doesn't receive its own frames
   a.set_next_local(&a);
   Frames on_a;
-  a.add_frame_listener(0x123, 0x7FF, Frames::on_frame, &on_a);
+  FrameListener listener_a{0x123, 0x7FF, Frames::on_frame, &on_a};
+  a.add_frame_listener(listener_a);
   a.setup();
   const uint8_t data[] = {1};
   ASSERT_TRUE(a.send_frame(0x123, data, 1));

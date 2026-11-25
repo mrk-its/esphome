@@ -22,6 +22,8 @@ def override_manifest(manifest: ComponentManifestOverride) -> None:
         enable_pdo()
         # sdo_block_test.cpp: the announced download block size
         enable_sdo_block(16)
+        cg.add_define("USE_CANOPEN_HEARTBEAT")
+        cg.add_define("USE_CANOPEN_EMCY")
 
     manifest.enable_codegen()
     manifest.to_code = to_code_testing

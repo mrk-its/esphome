@@ -34,6 +34,8 @@ def test_codegen(
         "add_on_emcy_callback",
     ):
         assert f"canopen_node->{callback}(" in main_cpp
+    defines = {define.name for define in CORE.defines}
+    assert {"USE_CANOPEN_HEARTBEAT", "USE_CANOPEN_EMCY"} <= defines
     assert "canopen_node->set_response_timeout(500);" in main_cpp
     # identity: unset fields are 0; device name / software version keep their C++ defaults
     assert "canopen_node->set_identity(0x12345678, 0x2A, 0x00, 0x00);" in main_cpp
