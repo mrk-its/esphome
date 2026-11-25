@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,8 @@ class FakeCanbus : public canbus::Canbus {
   std::vector<Frame> sent;
   // refuse frames, as with full TX buffers
   bool busy{false};
+  // runs inside send_message(), before the frame is taken or refused (as a driver's log handler would)
+  std::function<void(uint32_t can_id)> on_send;
   // received frames, handed out by loop()
   std::deque<canbus::CanFrame> rx;
 
@@ -57,6 +60,8 @@ class FakeCanbus : public canbus::Canbus {
  protected:
   bool setup_internal() override { return true; }
   canbus::Error send_message(canbus::CanFrame *frame) override {
+    if (this->on_send)
+      this->on_send(frame->can_id);
     if (this->busy)
       return canbus::ERROR_ALLTXBUSY;
     this->sent.push_back({frame->can_id, {frame->data, frame->data + frame->can_data_length_code}});
@@ -73,6 +78,8 @@ class FakeCanbus : public canbus::Canbus {
 
 class TestHub : public CANopenComponent {
  public:
+  // frames queued in the CANopenNode driver, waiting to be sent
+  uint16_t tx_count() const { return this->co_->CANmodule->CANtxCount; }
   explicit TestHub(canbus::Canbus *canbus, uint8_t node_id = 0x10) : CANopenComponent(canbus, node_id) {}
   // a received frame, as the canbus callback delivers it (processed right away)
   void frame(uint32_t can_id, const std::vector<uint8_t> &data) { this->on_frame_(make_frame(can_id, data)); }
