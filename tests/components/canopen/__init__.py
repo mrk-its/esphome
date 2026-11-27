@@ -24,6 +24,8 @@ def override_manifest(manifest: ComponentManifestOverride) -> None:
         enable_pdo()
         # sdo_block_test.cpp: the announced download block size
         enable_sdo_block(16)
+        # the C++ unit test build has no hub config to count heartbeat clients from
+        cg.add_define("ESPHOME_CANOPEN_HEARTBEAT_CLIENTS", 4)
         cg.add_define("USE_CANOPEN_HEARTBEAT")
         cg.add_define("USE_CANOPEN_EMCY")
         # loopback_test.cpp: nodes on one canbus
