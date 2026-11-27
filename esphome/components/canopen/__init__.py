@@ -182,8 +182,9 @@ _register_hb_client = cg.slot_list(
 
 
 def enable_node_monitor() -> None:
-    """Compile node monitoring (CANopenNode's heartbeat consumer, monitor_node()): for heartbeat_clients and components
-    that monitor a node (register_node(heartbeat_timeout=...)). Without it the consumer isn't built."""
+    """Compile node monitoring (CANopenNode's heartbeat consumer) for heartbeat_clients and
+    register_node(heartbeat_timeout=...), which register each node through _register_hb_client so the storage is
+    sized. Without it the consumer isn't built."""
     if not _enable_once("node_monitor"):
         return
     cg.add_define("USE_CANOPEN_NODE_MONITOR")
