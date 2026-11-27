@@ -162,6 +162,13 @@ def test_register_node(
     assert "canopen_node->monitor_node(33, 3000);" in main_cpp
     assert "canopen_node->monitor_node(33, 1500);" in main_cpp
     assert "monitor_node(34" not in main_cpp
+    # register_node() reserves a slot in the hub's consumer storage, like heartbeat_clients
+    slots = {
+        str(d.value)
+        for d in CORE.defines
+        if d.name == "ESPHOME_CANOPEN_HEARTBEAT_CLIENTS"
+    }
+    assert slots == {"2"}
     defines = {define.name for define in CORE.defines}
     assert {
         "USE_CANOPEN_SDO_CLIENT",
