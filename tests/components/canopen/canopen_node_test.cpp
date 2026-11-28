@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -94,6 +95,91 @@ TEST(CanopenNode, ForwardsWithNodeIdAndContext) {
   drive.cancel_sdo();
   EXPECT_FALSE(drive.send_nmt(NMTCommand::NMT_COMMAND_START));
   current = nullptr;
+}
+
+struct Call {
+  void *context;
+  SDOReply reply;
+  std::string data;
+};
+static std::vector<Call> *calls = nullptr;
+static void record_call(void *context, const SDOReply &reply) {
+  std::string data;
+  if (reply.data != nullptr)
+    data.assign(reinterpret_cast<const char *>(reply.data), reply.len);
+  calls->push_back({context, reply, data});
+}
+
+// on a running hub: the requests carry the node's id, the replies its context; cancel_sdo() drops only its own
+// requests; NMT commands address the node; the state follows its heartbeats
+TEST(CanopenNode, ForwardsOnARunningHub) {
+  FakeCanbus bus;
+  TestHub hub(&bus);
+  hub.monitor_node(0x21, 1000);
+  RecordingNode drive(&hub, 0x21);
+  RecordingNode other(&hub, 0x22);
+  hub.setup();
+  ASSERT_FALSE(hub.is_failed());
+  hub.loop();
+  std::vector<Call> recorded;
+  calls = &recorded;
+
+  ASSERT_TRUE(drive.read_sdo<uint16_t>(0x1017, 0, record_call));
+  hub.loop();
+  const auto *request = bus.find(0x621);
+  ASSERT_NE(request, nullptr);
+  EXPECT_EQ(request->data, (std::vector<uint8_t>{0x40, 0x17, 0x10, 0x00, 0, 0, 0, 0}));
+  hub.frame(0x5A1, {0x4B, 0x17, 0x10, 0x00, 0xE8, 0x03, 0, 0});
+  hub.loop();
+  ASSERT_EQ(recorded.size(), 1u);
+  EXPECT_EQ(recorded[0].context, &drive);
+  ASSERT_TRUE(recorded[0].reply.ok());
+  EXPECT_EQ(recorded[0].reply.as<uint16_t>(), 1000);
+
+  // a buffer read into the caller's buffer
+  static std::array<uint8_t, 8> buffer{};
+  int own_context = 0;
+  ASSERT_TRUE(drive.read_sdo_data(0x1008, 0, buffer.data(), buffer.size(), record_call, &own_context));
+  hub.loop();
+  hub.frame(0x5A1, {0x43, 0x08, 0x10, 0x00, 'a', 'b', 'c', 'd'});
+  hub.loop();
+  ASSERT_EQ(recorded.size(), 2u);
+  EXPECT_EQ(recorded[1].context, &own_context);
+  ASSERT_TRUE(recorded[1].reply.ok());
+  EXPECT_EQ(recorded[1].reply.data, buffer.data());
+  EXPECT_EQ(recorded[1].data, "abcd");
+
+  // the other profile's transfer is active, the drive's requests wait: cancelling the drive's keeps the other's
+  bus.sent.clear();
+  ASSERT_TRUE(other.read_sdo<uint16_t>(0x1017, 0, record_call));
+  hub.loop();
+  ASSERT_TRUE(drive.read_sdo<uint16_t>(0x1017, 0, record_call));
+  ASSERT_TRUE(drive.write_sdo<uint16_t>(0x6040, 0, 0x0F, record_call));
+  drive.cancel_sdo();
+  hub.frame(0x5A2, {0x4B, 0x17, 0x10, 0x00, 0xD0, 0x07, 0, 0});
+  for (int i = 0; i < 5; i++)
+    hub.loop();
+  ASSERT_EQ(recorded.size(), 3u);
+  EXPECT_EQ(recorded[2].context, &other);
+  EXPECT_EQ(recorded[2].reply.as<uint16_t>(), 2000);
+  EXPECT_EQ(bus.count(0x622), 1u);
+  EXPECT_EQ(bus.count(0x621), 0u);
+  calls = nullptr;
+
+  ASSERT_TRUE(drive.send_nmt(NMTCommand::NMT_COMMAND_START));
+  hub.loop();
+  const auto *nmt = bus.find(0x000);
+  ASSERT_NE(nmt, nullptr);
+  EXPECT_EQ(nmt->data, (std::vector<uint8_t>{0x01, 0x21}));
+
+  hub.frame(0x721, {0x05});
+  EXPECT_TRUE(drive.is_online());
+  EXPECT_TRUE(drive.is_operational());
+  EXPECT_FALSE(other.is_online());
+  hub.frame(0x721, {0x7F});
+  EXPECT_TRUE(drive.is_online());
+  EXPECT_EQ(drive.get_nmt_state(), NMTState::NMT_STATE_PRE_OPERATIONAL);
+  EXPECT_FALSE(drive.is_operational());
 }
 
 // a profile with another base before CANopenNode, as components are (Component, CANopenNode)
