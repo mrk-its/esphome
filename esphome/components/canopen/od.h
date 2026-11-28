@@ -41,7 +41,8 @@ class ObjectDictionary {
   // expedited). An empty string is one zero byte: CANopenNode aborts zero-length uploads.
   void add_string(uint16_t index, const char *str);
 
-  // Builds the entry list. Entries can't be added after this. False if an index was added twice.
+  // Builds the entry list. Entries can't be added after this. False if an index was added twice or a handler has no
+  // entry / a second handler: the OD is invalid then, and write(), read() and value_size() refuse every entry.
   bool finalize();
   bool finalized() const { return this->od_.list != nullptr; }
 
@@ -102,7 +103,7 @@ class ObjectDictionary {
   // finalize(): links the sorted entries to their handlers and keeps the handlers; false for a handler without an
   // entry or a second handler
   bool attach_handlers_(std::vector<PendingEntry> &entries);
-  // the entry's sub for an access; DEVICE_STATE before finalize()
+  // the entry's sub for an access; DEVICE_STATE before finalize() or after a failed one
   OdResult get_sub_(uint16_t index, uint8_t sub, OD_IO_t *io);
   template<typename T>
   static ODR_t read_trampoline(OD_stream_t *stream, void *buf, OD_size_t count, OD_size_t *count_read) {
@@ -126,6 +127,7 @@ class ObjectDictionary {
   FixedVector<OD_extension_t> extensions_;
   FixedVector<OD_entry_t> entries_;
   OD_t od_{0, nullptr};
+  bool invalid_{false};  // finalize() failed
 };
 
 }  // namespace esphome::canopen

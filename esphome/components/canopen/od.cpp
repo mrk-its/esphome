@@ -104,6 +104,7 @@ bool ObjectDictionary::finalize() {
   this->pending_storage_.reset();
   this->od_.size = this->entries_.size() - 1;
   this->od_.list = this->entries_.begin();
+  this->invalid_ = !ok;
   return ok;
 }
 
