@@ -225,6 +225,12 @@ TEST(CanopenOD, Errors) {
   od.add_var(0x2000, OD_READ_WRITE, &a, 1);
   od.add_var(0x2000, OD_READ_WRITE, &b, 1);
   EXPECT_FALSE(od.finalize());
+  // an invalid OD refuses every access
+  size_t len = 1;
+  EXPECT_EQ(od.write(0x2000, 0, &a, 1), OdResult::OD_RESULT_DEVICE_STATE);
+  EXPECT_EQ(od.read(0x2000, 0, &a, 1, &len), OdResult::OD_RESULT_DEVICE_STATE);
+  EXPECT_EQ(len, 0u);
+  EXPECT_EQ(od.value_size(0x2000, 0), 0u);
 }
 
 // a handler is attached by finalize(), so it may come before its entry
@@ -248,6 +254,8 @@ TEST(CanopenOD, HandlerForAMissingEntry) {
   od.add_var(0x2000, OD_READ_WRITE, &a, 1);
   od.set_object(0x2100, &handler);
   EXPECT_FALSE(od.finalize());
+  // the other entries are refused too
+  EXPECT_EQ(od.write(0x2000, 0, &a, 1), OdResult::OD_RESULT_DEVICE_STATE);
 }
 
 // two components claiming one entry: neither handler is silently replaced
@@ -259,6 +267,11 @@ TEST(CanopenOD, SecondHandler) {
   od.set_object(0x2000, &first);
   od.set_object(0x2000, &second);
   EXPECT_FALSE(od.finalize());
+  // no access reaches the first handler alone
+  size_t len = 0;
+  EXPECT_EQ(od.write(0x2000, 0, &a, 1), OdResult::OD_RESULT_DEVICE_STATE);
+  EXPECT_EQ(od.read(0x2000, 0, &a, 1, &len), OdResult::OD_RESULT_DEVICE_STATE);
+  EXPECT_EQ(first.writes + second.writes, 0);
 }
 
 // many entries of every kind, handlers set in between: the containers reallocate while the OD is built, and every

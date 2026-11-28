@@ -42,7 +42,7 @@ bool ObjectDictionary::attach_handlers_(std::vector<PendingEntry> &entries) {
 }
 
 OdResult ObjectDictionary::get_sub_(uint16_t index, uint8_t sub, OD_IO_t *io) {
-  if (!this->finalized())
+  if (!this->finalized() || this->invalid_)
     return OdResult::OD_RESULT_DEVICE_STATE;
   return static_cast<OdResult>(OD_getSub(this->find(index), sub, io, false));
 }
