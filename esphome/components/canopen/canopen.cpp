@@ -66,6 +66,12 @@ void CANopenComponent::setup() {
 #ifdef USE_CANOPEN_SDO_CLIENT
   this->add_sdo_client_od_();
 #endif
+#ifdef USE_CANOPEN_PDO
+  if (node) {
+    this->add_pdo_storage_od_();
+    this->add_pdo_od_();
+  }
+#endif
   if (!od.finalize()) {
     this->fail_setup_(LOG_STR("invalid object dictionary"));
     return;
@@ -87,6 +93,10 @@ void CANopenComponent::setup() {
 #ifdef USE_CANOPEN_SDO_CLIENT
   this->config_sdo_client_(cfg);
 #endif
+#ifdef USE_CANOPEN_PDO
+  if (node)
+    this->config_pdo_(cfg);
+#endif
 
   uint32_t heap = 0;
   this->co_ = CO_new(&cfg, &heap);
@@ -102,6 +112,12 @@ void CANopenComponent::setup() {
   }
 #ifdef USE_CANOPEN_NODE
   if (node) {
+#ifdef USE_CANOPEN_PDO
+    if (!this->init_pdo_storage_()) {
+      this->fail_setup_(LOG_STR("PDO storage init failed"));
+      return;
+    }
+#endif
     uint32_t err_info = 0;
     uint16_t nmt_control = this->start_operational_ ? CO_NMT_STARTUP_TO_OPERATIONAL : 0;
     err = CO_CANopenInit(this->co_, nullptr, nullptr, od.od(), nullptr, nmt_control, 500 /* first HB, ms */, 1000, 0,
@@ -111,6 +127,12 @@ void CANopenComponent::setup() {
       this->fail_setup_(LOG_STR("CO_CANopenInit failed"));
       return;
     }
+#ifdef USE_CANOPEN_PDO
+    if (!this->init_pdo_()) {
+      this->fail_setup_(LOG_STR("PDO init failed"));
+      return;
+    }
+#endif
 #ifdef USE_CANOPEN_NODE_MONITOR
     this->init_node_monitor_();
 #endif
@@ -252,6 +274,9 @@ void CANopenComponent::process_node_() {
     if (static_cast<int32_t>(now_ms - this->reset_deadline_ms_) >= 0)
       App.safe_reboot();
   }
+#ifdef USE_CANOPEN_PDO
+  this->process_pdo_(dt);
+#endif
   // CANopenNode's state change callback has no context pointer, so the state is compared here
   NMTState state = to_nmt_state(CO_NMT_getInternalState(this->co_->NMT));
   if (state != this->nmt_state_) {

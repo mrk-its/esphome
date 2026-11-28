@@ -21,6 +21,9 @@ namespace esphome::canopen {
 constexpr uint8_t OD_READ = ODA_SDO_R;
 constexpr uint8_t OD_WRITE = ODA_SDO_W;
 constexpr uint8_t OD_READ_WRITE = ODA_SDO_RW;
+// mappable to a TPDO / RPDO
+constexpr uint8_t OD_TPDO = ODA_TPDO;
+constexpr uint8_t OD_RPDO = ODA_RPDO;
 
 // Object dictionary built at runtime (CO_MULTIPLE_OD). Entries are collected with add_*() and turned into the sorted
 // OD_entry_t list by finalize(), which copies them into arrays of their exact size and frees what was collected. The

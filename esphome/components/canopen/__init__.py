@@ -131,6 +131,18 @@ def enable_sdo_client() -> None:
     cg.add_build_flag("-DCO_CONFIG_SDO_CLI_BUFFER_SIZE=7")
 
 
+def enable_pdo() -> None:
+    """Compile our own PDOs (configure_tpdo(), configure_rpdo(), request_tpdo()): for components that use them."""
+    if not _enable_once("pdo"):
+        return
+    cg.add_define("USE_CANOPEN_PDO")
+    # RPDO | TPDO | RPDO timers | TPDO timers | OD IO access (RPDO data reaches the handlers) | OD dynamic (records
+    # changed over SDO); no SYNC
+    cg.add_build_flag("-DCO_CONFIG_PDO=0x402F")
+    # 0x1010 / 0x1011 store / restore of the PDO parameters (CO_storage, our callbacks on preferences)
+    cg.add_build_flag("-DCO_CONFIG_STORAGE=0x01")
+
+
 # monitor_node() calls; ESPHOME_CANOPEN_HEARTBEAT_CLIENTS sizes each hub's 0x1016 storage
 _register_hb_client = cg.slot_list(
     "ESPHOME_CANOPEN_HEARTBEAT_CLIENTS", "monitor_node", DOMAIN
@@ -186,7 +198,7 @@ CANOPEN_NODE_SCHEMA = cv.Schema(
 
 
 def require_node_id(hub_id: ID, what: str) -> ConfigType:
-    """Final validation helper for things that need a CANopen node (OD, NMT, ...): the hub hub_id must have a
+    """Final validation helper for things that need a CANopen node (OD, PDOs, NMT, ...): the hub hub_id must have a
     node_id. Returns the hub's config."""
     full_config = fv.full_config.get()
     path = full_config.get_path_for_id(hub_id)[:-1]

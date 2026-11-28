@@ -165,11 +165,13 @@ def test_register_node(
     assert {
         "USE_CANOPEN_SDO_CLIENT",
         "USE_CANOPEN_NMT_MASTER",
+        "USE_CANOPEN_PDO",
         "USE_CANOPEN_EMCY",  # on_node_emcy()
     } <= defines
     assert "-DCO_CONFIG_SDO_CLI=0x0B" in CORE.build_flags
     assert "-DCO_CONFIG_FIFO=0x01" in CORE.build_flags
     assert "-DCO_CONFIG_NMT=0x03" in CORE.build_flags
+    assert "-DCO_CONFIG_PDO=0x402F" in CORE.build_flags
 
 
 @pytest.mark.parametrize(
