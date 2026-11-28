@@ -18,7 +18,8 @@ CONFIG_SCHEMA = (
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(FakeProfile),
-            cv.Optional(CONF_HEARTBEAT_TIMEOUT): canopen.UINT16_MS,
+            # not canopen.UINT16_MS: register_node() checks the range itself
+            cv.Optional(CONF_HEARTBEAT_TIMEOUT): cv.positive_time_period_milliseconds,
         }
     )
     .extend(canopen.CANOPEN_NODE_SCHEMA)

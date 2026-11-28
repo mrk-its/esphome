@@ -364,6 +364,14 @@ def test_invalid_config(
             "sdo_client_false_used.yaml",
             "has sdo_client: false, but the SDO client is used",
         ),
+        (
+            "profile_timeout_too_long.yaml",
+            "heartbeat_timeout of node 0x21 is 70000 ms, it must be 1 to 65535 ms",
+        ),
+        (
+            "profile_timeout_zero.yaml",
+            "heartbeat_timeout of node 0x21 is 0 ms, it must be 1 to 65535 ms",
+        ),
     ],
 )
 def test_codegen_errors(
