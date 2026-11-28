@@ -87,7 +87,7 @@ def test_node_id_range(node_id: int) -> None:
 
 
 def test_heartbeat_client_own_node_id() -> None:
-    with pytest.raises(cv.Invalid, match="own id"):
+    with pytest.raises(cv.Invalid, match="node_id 0x10 is this node.s own id"):
         CONFIG_SCHEMA(_config(heartbeat_clients=[{"node_id": 0x10, "timeout": "1s"}]))
 
 
@@ -163,19 +163,13 @@ def test_register_node(
     assert "canopen_node->monitor_node(33, 1500);" in main_cpp
     assert "monitor_node(34" not in main_cpp
     # register_node() reserves a slot in the hub's consumer storage, like heartbeat_clients
-    slots = {
-        str(d.value)
-        for d in CORE.defines
-        if d.name == "ESPHOME_CANOPEN_HEARTBEAT_CLIENTS"
-    }
-    assert slots == {"2"}
-    defines = {define.name for define in CORE.defines}
+    assert get_define_value("ESPHOME_CANOPEN_HEARTBEAT_CLIENTS") == "2"
     assert {
         "USE_CANOPEN_SDO_CLIENT",
         "USE_CANOPEN_NMT_MASTER",
         "USE_CANOPEN_PDO",
         "USE_CANOPEN_EMCY",  # on_node_emcy()
-    } <= defines
+    } <= _defines()
     # segmented only (block transfer is optional in servers, CANopenNode's client doesn't fall back)
     assert "-DCO_CONFIG_SDO_CLI=0x0B" in CORE.build_flags
     assert "-DCO_CONFIG_FIFO=0x01" in CORE.build_flags
@@ -224,16 +218,6 @@ def test_node_event_without_monitored_nodes(
     assert ("on_node_event never fires" in caplog.text) == warned
 
 
-def test_register_node_own_id(
-    component_config_path: Callable[[str], Path],
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """A profile can't drive the hub's own node id."""
-    CORE.config_path = component_config_path("profile_own_id.yaml")
-    assert read_config({}) is None
-    assert "node_id 16 is the own id of canopen canopen_node" in capsys.readouterr().out
-
-
 def test_local_nodes(
     generate_main: Callable[[str | Path], str],
     component_config_path: Callable[[str], Path],
@@ -272,7 +256,7 @@ def test_local_nodes_same_id(
     """Two nodes on one canbus can't share a node id."""
     CORE.config_path = component_config_path("local_same_id.yaml")
     assert read_config({}) is None
-    assert "node_id 16 is also used by canopen" in capsys.readouterr().out
+    assert "node_id 0x10 is also used by canopen" in capsys.readouterr().out
 
 
 def test_client_only_hubs_same_bus(
@@ -411,9 +395,11 @@ def test_client_only_defaults() -> None:
             "sdo_client_false_client_only.yaml",
             "sdo_client applies to every canopen hub of the firmware",
         ),
+        # a profile can't drive the hub's own node id
+        ("profile_own_id.yaml", "node_id 0x10 is the own id of canopen canopen_node"),
     ],
 )
-def test_client_only_invalid(
+def test_invalid_config(
     component_config_path: Callable[[str], Path],
     capsys: pytest.CaptureFixture[str],
     yaml: str,
