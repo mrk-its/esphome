@@ -188,6 +188,51 @@ TEST(CanopenProcessing, OwnIdRequestsUseTheOwnObjectDictionary) {
   EXPECT_EQ(bus.count(0x590), 0u);
 }
 
+// a handler on our own OD that cancels the request reading it
+struct CancellingObject : OdObject {
+  CANopenComponent *hub{nullptr};
+  void *context{nullptr};
+  int reads{0};
+  OdResult od_read(OdStream stream, void *buf, size_t count, size_t *done) {
+    this->reads++;
+    this->hub->cancel_sdo(this->context);
+    return stream.read_original(buf, count, done);
+  }
+};
+
+// A transfer from our own OD runs the handler inside CANopenNode's upload: once the handler cancels it, nothing more
+// is copied into the caller's buffer (which the caller may release after cancel_sdo()) and no callback runs
+TEST(CanopenProcessing, OwnIdReadCancelledByItsHandler) {
+  FakeCanbus bus;
+  TestHub hub(&bus);
+  uint32_t value = 0x11223344;
+  std::vector<SDOReply> replies;
+  CancellingObject handler;
+  handler.hub = &hub;
+  handler.context = &replies;
+  auto &od = hub.get_od();
+  od.add_var(0x2000, OD_READ, &value, sizeof(value));
+  od.set_object(0x2000, &handler);
+  hub.setup();
+  ASSERT_FALSE(hub.is_failed());
+  std::array<uint8_t, 8> data;
+  data.fill(0xAA);
+  ASSERT_TRUE(hub.read_sdo_data(0x10, 0x2000, 0, data.data(), data.size(), collect, &replies));
+  for (int i = 0; i < 5; i++)
+    hub.loop();
+  EXPECT_EQ(handler.reads, 1);
+  EXPECT_TRUE(replies.empty());
+  for (uint8_t b : data)
+    EXPECT_EQ(b, 0xAA);
+  // the client is free again
+  std::vector<SDOReply> next;
+  ASSERT_TRUE(hub.read_sdo<uint32_t>(0x10, 0x1018, 1, collect, &next));
+  for (int i = 0; i < 5 && next.empty(); i++)
+    hub.loop();
+  ASSERT_EQ(next.size(), 1u);
+  EXPECT_TRUE(next[0].ok());
+}
+
 // A node started pre-operational follows NMT commands addressed to it or to all nodes, and reports each state once
 TEST(CanopenProcessing, NmtStartupCommandsAndStateCallback) {
   FakeCanbus bus;
