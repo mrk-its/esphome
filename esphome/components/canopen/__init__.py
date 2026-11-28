@@ -272,8 +272,17 @@ async def register_node(
 
     Compiles the parts of the hub the component uses (SDO client, NMT master) and, with a heartbeat_timeout
     (TimePeriod, validated with UINT16_MS), monitors the node: its events reach the on_node_* hooks. The hub merges it with
-    heartbeat_clients, keeping the shortest timeout. The node's EMCY frames reach on_node_emcy().
+    heartbeat_clients, keeping the shortest timeout. The node's EMCY frames reach on_node_emcy(). A heartbeat_timeout
+    outside 1 to 65535 ms (0x1016 holds uint16 ms) fails the build.
     """
+    if (
+        heartbeat_timeout is not None
+        and not 1 <= heartbeat_timeout.total_milliseconds <= 65535
+    ):
+        raise EsphomeError(
+            f"canopen: the heartbeat_timeout of node 0x{config[CONF_NODE_ID]:02x} is "
+            f"{heartbeat_timeout.total_milliseconds} ms, it must be 1 to 65535 ms (validate it with canopen.UINT16_MS)"
+        )
     cg.add_define("USE_CANOPEN_EMCY")
     if sdo:
         enable_sdo_client()
