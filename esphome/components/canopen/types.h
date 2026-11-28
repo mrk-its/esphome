@@ -95,6 +95,13 @@ enum class NMTCommand : uint8_t {
   NMT_COMMAND_RESET_COMMUNICATION = 130,
 };
 
+// one object mapped into a PDO, see CANopenComponent::configure_tpdo() / configure_rpdo()
+struct PdoMapping {
+  uint16_t index;
+  uint8_t sub;
+  uint8_t bits;  // multiple of 8
+};
+
 // raw CAN frame listener (see CANopenComponent::add_frame_listener()); data is valid only during the call
 using FrameCallback = void (*)(void *context, uint32_t can_id, const uint8_t *data, uint8_t len);
 

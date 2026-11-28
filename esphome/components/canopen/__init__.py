@@ -34,6 +34,8 @@ DEPENDENCIES = ["canbus"]
 DOMAIN = "canopen"
 MULTI_CONF = True
 
+# for components that refer to a canopen node (cv.use_id(CANopenComponent))
+CONF_CANOPEN_ID = "canopen_id"
 CONF_NODE_ID = "node_id"
 CONF_HEARTBEAT_INTERVAL = "heartbeat_interval"
 CONF_HEARTBEAT_CLIENTS = "heartbeat_clients"
@@ -42,6 +44,7 @@ CONF_ON_HEARTBEAT = "on_heartbeat"
 CONF_ON_EMCY = "on_emcy"
 CONF_ON_NMT_STATE_CHANGE = "on_nmt_state_change"
 CONF_NMT_STARTUP = "nmt_startup"
+CONF_SDO_BLOCK_SIZE = "sdo_block_size"
 CONF_RESPONSE_TIMEOUT = "response_timeout"
 CONF_SDO_CLIENT = "sdo_client"
 CONF_NMT_MASTER = "nmt_master"
@@ -57,6 +60,8 @@ CANOPENNODE_VERSION = "4.1.0-esphome.2"
 
 ns = cg.esphome_ns.namespace("canopen")
 CANopenComponent = ns.class_("CANopenComponent", cg.Component)
+# base class of components that drive another node (canopen_node.h)
+CANopenNode = ns.class_("CANopenNode")
 NMTState = ns.enum("NMTState", is_class=True)
 NodeEvent = ns.enum("NodeEvent", is_class=True)
 Emergency = ns.struct("Emergency")
@@ -125,6 +130,51 @@ def enable_sdo_client() -> None:
     cg.add_build_flag("-DCO_CONFIG_SDO_CLI_BUFFER_SIZE=7")
 
 
+# CANopenNode's minimum server buffer for block transfer (CO_SDOserver.c checks it)
+SDO_BLOCK_BUFFER_SIZE = 900
+
+
+def enable_sdo_block(block_size: int) -> None:
+    """SDO server block transfer (CiA 301), e.g. for firmware or log uploads.
+
+    `block_size` (1..127) caps the segments per block the server announces for downloads (the client sends a
+    block back to back, so it must fit the CAN receive path); for uploads the client chooses it. Without block
+    transfer the server is segmented only, with a 32-byte buffer.
+
+    These are CANopenNode build flags, so they apply to every canopen node of the firmware: a node's
+    sdo_block_size (validated to be the same on all of them) wins over `block_size`, otherwise the first call
+    sets it.
+    """
+    if not _enable_once("sdo_block"):
+        return
+    configured = {
+        hub[CONF_SDO_BLOCK_SIZE]
+        for hub in CORE.config.get(DOMAIN, [])
+        if CONF_SDO_BLOCK_SIZE in hub
+    }
+    if configured:
+        block_size = configured.pop()
+    cg.add_define("CANOPEN_SDO_BLOCK_SIZE", block_size)
+    # segmented | block, the buffer for a whole block, the download block size cap (CO_CONFIG_SDO_SRV_BLKSIZE needs
+    # the SDO server block size patch of the pinned CANopenNode), crc16 for the block CRC
+    cg.add_build_flag("-DCO_CONFIG_SDO_SRV=0x06")
+    cg.add_build_flag(f"-DCO_CONFIG_SDO_SRV_BUFFER_SIZE={SDO_BLOCK_BUFFER_SIZE}")
+    cg.add_build_flag(f"-DCO_CONFIG_SDO_SRV_BLKSIZE={block_size}")
+    cg.add_build_flag("-DCO_CONFIG_CRC16=0x01")
+
+
+def enable_pdo() -> None:
+    """Compile our own PDOs (configure_tpdo(), configure_rpdo(), request_tpdo()): for components that use them."""
+    if not _enable_once("pdo"):
+        return
+    cg.add_define("USE_CANOPEN_PDO")
+    # RPDO | TPDO | RPDO timers | TPDO timers | OD IO access (RPDO data reaches the handlers) | OD dynamic (records
+    # changed over SDO); no SYNC
+    cg.add_build_flag("-DCO_CONFIG_PDO=0x402F")
+    # 0x1010 / 0x1011 store / restore of the PDO parameters (CO_storage, our callbacks on preferences)
+    cg.add_build_flag("-DCO_CONFIG_STORAGE=0x01")
+
+
 # monitor_node() calls; ESPHOME_CANOPEN_HEARTBEAT_CLIENTS sizes each hub's 0x1016 storage
 _register_hb_client = cg.slot_list(
     "ESPHOME_CANOPEN_HEARTBEAT_CLIENTS", "monitor_node", DOMAIN
@@ -132,8 +182,9 @@ _register_hb_client = cg.slot_list(
 
 
 def enable_node_monitor() -> None:
-    """Compile node monitoring (CANopenNode's heartbeat consumer) for heartbeat_clients, which registers each node
-    through _register_hb_client so the storage is sized. Without it the consumer isn't built."""
+    """Compile node monitoring (CANopenNode's heartbeat consumer) for heartbeat_clients and
+    register_node(heartbeat_timeout=...), which register each node through _register_hb_client so the storage is
+    sized. Without it the consumer isn't built."""
     if not _enable_once("node_monitor"):
         return
     cg.add_define("USE_CANOPEN_NODE_MONITOR")
@@ -141,8 +192,8 @@ def enable_node_monitor() -> None:
 
 @coroutine_with_priority(CoroPriority.FINAL)
 async def _final_build_flags() -> None:
-    # after every hub's codegen: CANopenNode's port header enables the heartbeat consumer, which links in its code
-    # even without monitored nodes
+    # after every component's codegen, so that register_node() calls count too: CANopenNode's port header enables the
+    # heartbeat consumer, which links in its code even without monitored nodes
     if "node_monitor" not in _get_data().enabled:
         cg.add_build_flag("-DCO_CONFIG_HB_CONS=0")
     # each hub has its own consumer, so another hub's heartbeat_clients don't help
@@ -161,6 +212,69 @@ def enable_nmt_master() -> None:
     cg.add_define("USE_CANOPEN_NMT_MASTER")
     # callback change | master
     cg.add_build_flag("-DCO_CONFIG_NMT=0x03")
+
+
+# for components that drive another node (subclasses of CANopenNode), see register_node()
+CANOPEN_NODE_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(CONF_CANOPEN_ID): cv.use_id(CANopenComponent),
+        cv.Required(CONF_NODE_ID): cv.All(cv.int_, cv.Range(min=1, max=127)),
+    }
+)
+
+
+def require_node_id(hub_id: ID, what: str) -> ConfigType:
+    """Final validation helper for things that need a CANopen node (OD, PDOs, NMT, ...): the hub hub_id must have a
+    node_id. Returns the hub's config."""
+    full_config = fv.full_config.get()
+    path = full_config.get_path_for_id(hub_id)[:-1]
+    hub = full_config.get_config_for_path(path)
+    if CONF_NODE_ID not in hub:
+        raise cv.Invalid(
+            f"{what} needs a CANopen node: canopen {hub_id} has no node_id (SDO client only)"
+        )
+    return hub
+
+
+def final_validate_canopen_node(config: ConfigType) -> ConfigType:
+    """FINAL_VALIDATE_SCHEMA helper for CANOPEN_NODE_SCHEMA: the hub must be a node, and the node can't be the hub's own
+    node id."""
+    hub = require_node_id(config[CONF_CANOPEN_ID], "a canopen profile component")
+    if hub[CONF_NODE_ID] == config[CONF_NODE_ID]:
+        raise cv.Invalid(
+            f"node_id {config[CONF_NODE_ID]} is the own id of canopen {config[CONF_CANOPEN_ID]}",
+            path=[CONF_NODE_ID],
+        )
+    return config
+
+
+async def register_node(
+    var: MockObj,
+    config: ConfigType,
+    sdo: bool = False,
+    nmt: bool = False,
+    heartbeat_timeout: cv.TimePeriod | None = None,
+) -> MockObj:
+    """Codegen for a CANopenNode subclass built from CANOPEN_NODE_SCHEMA.
+
+    Compiles the parts of the hub the component uses (SDO client, NMT master) and, with a heartbeat_timeout
+    (TimePeriod, validated with UINT16_MS), monitors the node: its events reach the on_node_* hooks. The hub merges it with
+    heartbeat_clients, keeping the shortest timeout. The node's EMCY frames reach on_node_emcy().
+    """
+    cg.add_define("USE_CANOPEN_EMCY")
+    if sdo:
+        enable_sdo_client()
+    if nmt:
+        enable_nmt_master()
+    if heartbeat_timeout is not None:
+        enable_node_monitor()
+        hub = await cg.get_variable(config[CONF_CANOPEN_ID])
+        cg.add(
+            _register_hb_client(
+                hub, config[CONF_NODE_ID], heartbeat_timeout.total_milliseconds
+            )
+        )
+    return var
 
 
 CALLBACK_AUTOMATIONS = (
@@ -221,6 +335,7 @@ NODE_OPTIONS = (
     CONF_DEVICE_NAME,
     CONF_HARDWARE_VERSION,
     CONF_SOFTWARE_VERSION,
+    CONF_SDO_BLOCK_SIZE,
     CONF_NMT_MASTER,
 )
 
@@ -293,6 +408,9 @@ CONFIG_SCHEMA = cv.All(
             # NMT master (send_nmt()): compiled in for canopen.nmt actions; true = also without them (for lambdas).
             # Firmware-wide.
             cv.Optional(CONF_NMT_MASTER): cv.boolean,
+            # SDO server block transfer, see enable_sdo_block(); without it segmented only. Firmware-wide: the
+            # same on every canopen node
+            cv.Optional(CONF_SDO_BLOCK_SIZE): cv.int_range(min=1, max=127),
             # pre_operational: until an NMT master (or set_nmt_state()) starts the node
             cv.Optional(CONF_NMT_STARTUP, default="operational"): cv.one_of(
                 "operational", "pre_operational", lower=True
@@ -313,6 +431,17 @@ CONFIG_SCHEMA = cv.All(
 
 def _final_validate(config: ConfigType) -> ConfigType:
     for other in fv.full_config.get().get(DOMAIN, []):
+        # CANopenNode build flags (enable_sdo_block()): one value for the whole firmware
+        if (
+            CONF_SDO_BLOCK_SIZE in config
+            and CONF_SDO_BLOCK_SIZE in other
+            and other[CONF_SDO_BLOCK_SIZE] != config[CONF_SDO_BLOCK_SIZE]
+        ):
+            raise cv.Invalid(
+                f"sdo_block_size applies to every canopen node of the firmware: {config[CONF_SDO_BLOCK_SIZE]} "
+                f"here, {other[CONF_SDO_BLOCK_SIZE]} on canopen {other[CONF_ID]}",
+                path=[CONF_SDO_BLOCK_SIZE],
+            )
         # the SDO client is compiled for the whole firmware (enable_sdo_client())
         if config.get(CONF_SDO_CLIENT) is False and (
             other.get(CONF_SDO_CLIENT) is True or CONF_NODE_ID not in other
@@ -398,6 +527,8 @@ async def to_code(config: ConfigType) -> None:
     cg.add(var.set_heartbeat_interval(config[CONF_HEARTBEAT_INTERVAL]))
     if config[CONF_NMT_STARTUP] != "operational":
         cg.add(var.set_start_operational(False))
+    if CONF_SDO_BLOCK_SIZE in config:
+        enable_sdo_block(config[CONF_SDO_BLOCK_SIZE])
     identity = config[CONF_IDENTITY]
     cg.add(
         var.set_identity(

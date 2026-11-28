@@ -2,16 +2,23 @@
 
 #include <array>
 #include <cstring>
+#include <initializer_list>
 #include <utility>
 #include <vector>
 
+#include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
+#include "esphome/core/preferences.h"
 #include "esphome/components/canbus/canbus.h"
 
 #include "od.h"
 #include "types.h"
+
+#ifdef USE_CANOPEN_PDO
+#include "storage/CO_storage.h"
+#endif
 
 namespace esphome::canopen {
 
@@ -21,25 +28,28 @@ void discard_pending_tx(CO_CANmodule_t *mod, CO_CANtx_t *buf);
 inline NMTState to_nmt_state(CO_NMT_internalState_t state) { return static_cast<NMTState>(state); }
 
 // Other components configure the node in two phases:
-// - Build time (Python codegen): the hub parts they use, enable_sdo_client(), enable_nmt_master(); these set defines
-//   and CANopenNode build flags, so they can't be switched on at runtime. Node monitoring comes from heartbeat_clients
-//   only (enable_node_monitor() and monitor_node() through cg.slot_list()).
-// - Before the hub's setup(), which builds the object dictionary and initialises CANopenNode: identity and device
-//   information. Two places run early enough: setters called from codegen (they run in
-//   main(), before App.setup()), or the setup() of a component whose setup priority is above the hub's
-//   (setup_priority::HARDWARE - 1, after the CAN bus), e.g. HARDWARE - 0.5. Object dictionary entries and monitored
-//   nodes added later are logged as errors and ignored.
+// - Build time (Python codegen): the hub parts they use, enable_sdo_client(), enable_nmt_master(), enable_pdo(),
+//   enable_sdo_block(); these set defines and CANopenNode build flags, so they can't be switched on at runtime.
+// - Before the hub's setup(), which builds the object dictionary and initialises CANopenNode: OD entries and
+//   handlers (get_od()), configure_tpdo() / configure_rpdo(), identity and device information. Two places run early
+//   enough: setters called from codegen (they run in main(), before App.setup()), or the setup() of a component whose
+//   setup priority is above the hub's (setup_priority::HARDWARE - 1, after the CAN bus), e.g. HARDWARE - 0.5. OD
+//   entries and handlers and PDO configurations added later are logged as errors and ignored; the identity and device
+//   information setters aren't checked.
+// - Node monitoring comes from heartbeat_clients and register_node(heartbeat_timeout=...) only (enable_node_monitor()
+//   and monitor_node() through cg.slot_list(), which sizes the consumer storage).
 // The rest is runtime API, e.g. from loop() or automations: add_frame_listener() and the callbacks (any time),
-// send_frame(), SDO client and NMT master requests (made before the hub's setup(), they wait for it). The hub's setup()
-// runs before most components' setup() (e.g. sensors, DATA) and the default on_boot automations.
+// send_frame(), SDO client and NMT master requests (made before the hub's setup(), they wait for it); write_od(),
+// read_od() and request_tpdo() need the OD, so they fail or do nothing before the hub's setup(), which runs before
+// most components' setup() (e.g. sensors, DATA) and the default on_boot automations.
 //
 // Client-only mode: without a node id (NO_NODE_ID) the hub is no CANopen node, only an SDO client on the bus (plus
 // raw frames). CANopenNode's node part (NMT, heartbeat, EMCY, SDO server) isn't initialised, so it isn't linked either.
 //
 // The implementation is split by feature: canopen.cpp (setup, processing, NMT), driver_can.cpp (CANopenNode's CAN
-// driver, frame reception and transmission), device_info.cpp (identity, device information, SDO server), od.cpp
-// (the object dictionary), node_monitor.cpp (heartbeat consumer), frames.cpp (raw frames, heartbeat / EMCY callbacks),
-// sdo_client.cpp and nmt_master.cpp.
+// driver, frame reception and transmission), device_info.cpp (identity, device information, SDO server),
+// node_monitor.cpp (heartbeat consumer), frames.cpp (raw frames, heartbeat / EMCY callbacks), sdo_client.cpp,
+// nmt_master.cpp, pdo.cpp and pdo_storage.cpp (0x1010 / 0x1011).
 class CANopenComponent : public Component {
  public:
   // CiA 301 node ids are 1..127; 0 is reserved (NMT broadcast), so it can't clash with a real node. It's also
@@ -107,9 +117,21 @@ class CANopenComponent : public Component {
 #endif
 
   // --- Object dictionary (od.cpp) ---
-  // Object dictionary for other components: entries are added before setup() only (see above), since CANopenNode
-  // can't add entries after its init. The storage must outlive the component.
+  // Object dictionary for other components: entries and handlers (OdObject) are added before setup() only (see
+  // above), since CANopenNode can't add entries after its init. The storage must outlive the component.
   ObjectDictionary &get_od() { return this->od_; }
+
+  // --- OD access through the handlers (od_handler.cpp) ---
+  // Writes a value to our own OD through its handler, as an SDO download does (e.g. for commands received in other
+  // frames). Synchronous; needs write access.
+  OdResult write_od(uint16_t index, uint8_t sub, const void *data, size_t len) {
+    return this->od_.write(index, sub, data, len);
+  }
+  // Reads a value from our own OD through its handler, as an SDO upload does; *len is the number of bytes read. A
+  // handler may have side effects. Synchronous; needs read access. DATA_LONG if the value doesn't fit in max_len.
+  OdResult read_od(uint16_t index, uint8_t sub, void *data, size_t max_len, size_t *len) {
+    return this->od_.read(index, sub, data, max_len, len);
+  }
 
   // --- Node monitoring (node_monitor.cpp) ---
   // events of all monitored nodes: (node_id, event, state)
@@ -126,7 +148,7 @@ class CANopenComponent : public Component {
   NMTState get_node_state(uint8_t node_id);
   bool is_node_online(uint8_t node_id);
 #else
-  // no monitored nodes: without heartbeat_clients the heartbeat consumer isn't built
+  // no monitored nodes (heartbeat_clients, register_node(heartbeat_timeout=...)): the heartbeat consumer isn't built
   NMTState get_node_state(uint8_t /*node_id*/) { return NMTState::NMT_STATE_UNKNOWN; }
   bool is_node_online(uint8_t /*node_id*/) { return false; }
 #endif
@@ -198,6 +220,30 @@ class CANopenComponent : public Component {
   bool send_nmt(uint8_t node_id, NMTCommand command);
 #endif
 
+#ifdef USE_CANOPEN_PDO
+  // --- PDOs (pdo.cpp, pdo_storage.cpp) ---
+  // Our own PDOs (canopen.enable_pdo() in codegen). Before setup() only. The hub creates the communication and
+  // mapping records 0x1400 / 0x1600 (RPDO) and 0x1800 / 0x1A00 (TPDO) for PDO 0..n; PDOs that aren't configured stay
+  // disabled, and the records can be changed over SDO (CiA 301 order: disable, mapping, enable). COB-IDs are full CAN
+  // IDs (CANopenNode only adds the node id to a bare predefined base, 0x180 / 0x200 / ..., of PDO 0-3). Mapped
+  // objects need OD_TPDO / OD_RPDO; RPDO data reaches their handler (ObjectDictionary::set_object()). Event-driven
+  // transmission types (254, 255); PDOs only run in OPERATIONAL. A PDO configured without mappings starts disabled.
+  static constexpr uint8_t MAX_PDO = 32;
+  bool configure_tpdo(uint8_t n, uint32_t cob_id, std::initializer_list<PdoMapping> mappings,
+                      uint16_t event_timer_ms = 0, uint16_t inhibit_time_100us = 0, uint8_t transmission_type = 254);
+  bool configure_rpdo(uint8_t n, uint32_t cob_id, std::initializer_list<PdoMapping> mappings,
+                      uint16_t event_timer_ms = 0, uint8_t transmission_type = 254);
+  // sends TPDO n at the next processing
+  void request_tpdo(uint8_t n);
+  // sends the TPDO that maps index:sub (an entry with a handler, sub < 32). CANopenNode has one request flag per
+  // sub-entry: if several TPDOs map it, only the first one processed is sent.
+  bool request_tpdo(uint16_t index, uint8_t sub);
+  // The PDO parameters (communication and mapping records) are the "communication parameters" of 0x1010 / 0x1011
+  // (CiA 301, sub 1 = all, sub 2 = communication): "save" stores them as they are (the host may have changed them
+  // over SDO), and they are loaded at the next boot; "load" restores the configured defaults from the next boot on.
+  // Stored parameters belong to the defaults they were changed from: a firmware with other defaults ignores them.
+#endif
+
  protected:
   void on_frame_(const canbus::CanFrame &frame);
   // a received frame, from the bus or another local node: receive_(), then the processing it needs at once
@@ -223,7 +269,7 @@ class CANopenComponent : public Component {
   void stage_bus_frame_(uint16_t ident, const uint8_t *data, uint8_t len);
 #endif
   // A client-only hub with no request queued or running and no frame waiting to be resent. A node always has work
-  // (heartbeat).
+  // (heartbeat, PDO timers).
   bool idle_() const;
   // CO_process() and our node's own processing: per received frame and in loop()
   void process_node_();
@@ -264,7 +310,7 @@ class CANopenComponent : public Component {
 
   LazyCallbackManager<void(NMTState)> nmt_state_callback_;
   uint32_t cob_emcy_{0x80};                // 0x1014, CANopenNode adds the node id
-  uint32_t last_us_{0};                    // the node's clock (CO_process())
+  uint32_t last_us_{0};                    // the node's clock (CO_process(), PDOs)
   uint32_t reset_deadline_ms_{0};          // NMT reset node: reboot time, see reset_pending_
   uint32_t dev_type_{0};                   // 0x1000
   const char *device_name_{nullptr};       // 0x1008
@@ -396,6 +442,53 @@ class CANopenComponent : public Component {
   bool sdo_busy_{false};
   bool sdo_abort_pending_{false};
   bool sdo_cancel_pending_{false};  // cancel_sdo() hit the active transfer: process_sdo_() aborts it
+#endif
+
+#ifdef USE_CANOPEN_PDO
+  // --- PDOs (pdo.cpp) ---
+  struct PdoParams {
+    uint32_t cob_id{0x80000000};  // not valid
+    uint8_t transmission_type{254};
+    uint16_t inhibit_time{0};  // TPDO only, 100 us
+    uint16_t event_timer{0};   // ms
+    uint8_t map_count{0};
+    std::array<uint32_t, 8> map{};
+  };
+  void add_pdo_od_();
+  void config_pdo_(CO_config_t &cfg);
+  bool init_pdo_();
+  void process_pdo_(uint32_t dt_us);
+  bool configure_pdo_(std::vector<PdoParams> &pdos, const LogString *kind, uint8_t n, uint32_t cob_id,
+                      std::initializer_list<PdoMapping> mappings, uint16_t event_timer_ms, uint16_t inhibit_time_100us,
+                      uint8_t transmission_type);
+  void add_pdo_map_(uint16_t index, PdoParams &pdo);
+  bool has_pdos_() const { return !this->rpdos_.empty() || !this->tpdos_.empty(); }
+  // index = PDO number; the vectors are sized before setup() and not resized afterwards (the OD points into them)
+  std::vector<PdoParams> tpdos_;
+  std::vector<PdoParams> rpdos_;
+  uint8_t tpdo_comm_highest_{5};
+  uint8_t rpdo_comm_highest_{5};
+
+  // --- PDO parameter storage, 0x1010 / 0x1011 (pdo_storage.cpp) ---
+  // add_pdo_storage_od_() loads the stored parameters, so it runs before the PDO records are added
+  void add_pdo_storage_od_();
+  bool init_pdo_storage_();
+  void load_pdos_();
+  bool store_pdos_();
+  bool restore_pdo_defaults_();
+  static ODR_t storage_store(CO_storage_entry_t *entry, CO_CANmodule_t *module);
+  static ODR_t storage_restore(CO_storage_entry_t *entry, CO_CANmodule_t *module);
+  bool pdo_storage_{false};  // 0x1010 / 0x1011 exist (PDOs and preferences)
+  // sub 1 (all) and 2 (communication); bit 0: saves on command / restores
+  uint8_t storage_highest_sub_{2};
+  std::array<uint32_t, 2> store_caps_{1, 1};
+  std::array<uint32_t, 2> restore_caps_{1, 1};
+  CO_storage_t storage_{};
+  CO_storage_entry_t storage_entry_{};
+  // the stored RPDO and TPDO parameters, and a marker that they are valid (cleared by "load")
+  ESPPreferenceObject rpdo_pref_;
+  ESPPreferenceObject tpdo_pref_;
+  ESPPreferenceObject pdo_valid_pref_;
 #endif
 };
 
