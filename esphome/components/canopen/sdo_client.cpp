@@ -318,6 +318,10 @@ bool CANopenComponent::drain_upload_(uint32_t dt_us, CO_SDO_return_t &ret, CO_SD
   // The fifo holds one segment, so a read past capacity ends before the next segment is requested.
   ret = CO_SDOclientUpload(cli, dt_us, false, &abort, nullptr, nullptr, nullptr);
   while (ret >= 0) {
+    // From our own OD the upload runs the entry's handler, which may cancel the request: the caller may have released
+    // the buffer then. The next pass aborts the transfer.
+    if (this->sdo_cancel_pending_)
+      return true;
     uint8_t buf[8];
     size_t n;
     while ((n = CO_SDOclientUploadBufRead(cli, buf, sizeof(buf))) > 0) {
